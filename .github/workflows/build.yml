@@ -1,7 +1,13 @@
 name: Build APK
 
+# Every push: run the unit tests, build the app, and check it requests no permissions.
+# On your own repo (where the signing secrets exist) the APK is signed with the permanent
+# release key, so each build installs over the previous one. Pull requests from forks have
+# no access to secrets and get the throwaway debug key instead.
+
 on:
   push:
+    branches: ['**']
   pull_request:
   workflow_dispatch:
 
@@ -12,6 +18,8 @@ jobs:
   build:
     # Pinned rather than ubuntu-latest, which moves to a new Ubuntu release on its own schedule.
     runs-on: ubuntu-24.04
+    env:
+      HAS_RELEASE_KEY: ${{ secrets.AUTOSKIP_KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -29,11 +37,34 @@ jobs:
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --no-daemon
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --no-daemon
+      - name: Load the release key
+        if: env.HAS_RELEASE_KEY == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.AUTOSKIP_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/autoskip-release.p12"
+          echo "AUTOSKIP_KEYSTORE=$RUNNER_TEMP/autoskip-release.p12" >> "$GITHUB_ENV"
+
+      - name: Build APK
+        env:
+          AUTOSKIP_KEYSTORE_PASSWORD: ${{ secrets.AUTOSKIP_KEYSTORE_PASSWORD }}
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Check permissions and signature
+        run: |
+          if [ "$HAS_RELEASE_KEY" = "true" ]; then
+            .github/scripts/verify-apk.sh app/build/outputs/apk/release/app-release.apk --release
+          else
+            echo "::notice::No release key available, so this APK is signed with a throwaway debug key."
+            .github/scripts/verify-apk.sh app/build/outputs/apk/release/app-release.apk
+          fi
+
+      - name: Remove the key file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/autoskip-release.p12"
 
       - uses: actions/upload-artifact@v6
         with:
-          name: AutoSkip-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: AutoSkip-apk
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error

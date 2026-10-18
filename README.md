@@ -6,8 +6,27 @@ An Android app that presses the **Skip** button in the official YouTube app for 
 - Optionally **mutes** ads while they play, including ads that have no Skip button.
 - Counts how many ads it has skipped.
 - Reads only the YouTube app, stores nothing it sees, and has **no internet permission**.
+- **Free**, with no ads and no tracking. Open source under the [MIT licence](LICENSE).
 
 Works on Android 8.0 and later. Built for Android 16 (API 36).
+
+---
+
+## Download
+
+Get the latest **AutoSkip-v….apk** from the [Releases page](../../releases/latest), open it on your phone, then follow [Install](#2-install-the-apk) and [Turn it on](#3-turn-it-on) below.
+
+Every official release is signed with the same key, so a new version installs over the old one and keeps your settings. To check a download is genuine, its signing certificate's SHA-256 fingerprint must be:
+
+```
+c5e60d4195e3fd86e3c4f407ec998d184a478b935770e7add7552afb50afeb62
+```
+
+```bash
+apksigner verify --print-certs AutoSkip-v1.0.apk   # "certificate SHA-256 digest" must match the line above
+```
+
+`apksigner` comes with the Android SDK build tools. Builds from forks or from Android Studio are signed with a different key, so uninstall those before installing an official release.
 
 ---
 
@@ -30,24 +49,22 @@ All the matching rules are in [`SkipDetector.kt`](app/src/main/java/io/github/au
 
 ---
 
-## 1. Build the app
+## 1. Build the app yourself (optional)
 
-Pick one.
+Only needed if you want to change the code. Otherwise use the [Releases page](../../releases/latest).
 
-### Option A: Android Studio (recommended)
+### Option A: Android Studio
 
 1. Install [Android Studio](https://developer.android.com/studio) (free, Windows/macOS/Linux).
-2. **File → Open** and choose this `AutoSkip` folder. Let Gradle sync finish. If it offers to install SDK Platform 36 or Build Tools 36.1.0, accept.
+2. **File → Open** and choose this folder. Let Gradle sync finish. If it offers to install SDK Platform 36 or Build Tools 36.1.0, accept.
 3. On your phone: **Settings → About phone →** tap **Build number** 7 times to unlock Developer options. Then **Settings → System → Developer options → USB debugging: on**.
 4. Plug the phone in, accept the "Allow USB debugging?" prompt, choose your phone in the device list at the top of Android Studio, and press **Run ▶**.
 
-Installing this way (over USB/adb) avoids Android's "restricted settings" block, described below.
+Installing this way (over USB/adb) avoids Android's "restricted settings" block, described below. Android Studio signs with your computer's own debug key, so you'll need to uninstall that build before installing an official release, and the other way round.
 
-### Option B: GitHub builds it for you (nothing to install)
+### Option B: GitHub builds it for you
 
-1. Create a free GitHub account and a new repository, then upload this folder's contents (keep the `.github` folder).
-2. Open the **Actions** tab. The **Build APK** workflow runs the unit tests and builds the app.
-3. Open the finished run and download **AutoSkip-debug-apk**. Unzip it to get `app-debug.apk`, and copy that to your phone.
+Every push runs the **Build APK** workflow: unit tests, a build, and a check that the APK requests no permissions. Open the **Actions** tab, click the latest green run, and download **AutoSkip-apk**. On this repository the APK is signed with the release key, so it installs over an official release. Forks get a throwaway key instead.
 
 ### Option C: Command line
 
@@ -55,19 +72,19 @@ Needs JDK 17+ and the Android SDK (platform 36, build-tools 36.1.0) with `ANDROI
 
 ```bash
 ./gradlew testDebugUnitTest     # run the detector's unit tests
-./gradlew assembleDebug         # build app/build/outputs/apk/debug/app-debug.apk
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+./gradlew assembleRelease       # build app/build/outputs/apk/release/app-release.apk
+adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
+Without the release key (see [Maintainers](#maintainers)), `assembleRelease` signs with your local debug key.
+
 ---
 
-## 2. Install the APK (only if you didn't use Run ▶)
+## 2. Install the APK
 
-1. Open `app-debug.apk` on the phone and allow your browser or file manager to install unknown apps when asked.
+1. Open the APK on the phone and allow your browser or file manager to install unknown apps when asked.
 2. **Restricted settings (Android 13 and later).** Android blocks Accessibility for apps installed from a downloaded APK. If the AutoSkip switch is greyed out or you see "Restricted setting": open **Settings → Apps → AutoSkip**, tap **⋮** (top right) → **Allow restricted settings**, confirm with your PIN, then go back and turn it on. The app has a button that opens this screen.
-3. **Developer verification.** Google is rolling out a requirement that apps come from registered developers. From 30 September 2026 it applies in Brazil, Indonesia, Singapore and Thailand, with a global rollout planned for 2027. Installing with adb (Option A or `adb install`) remains an official route for unverified apps. Otherwise Android offers an "advanced flow" for unverified apps in Developer options, with a one-time 24-hour wait.
-
----
+3. **Developer verification.** Google is rolling out a requirement that apps come from registered developers. From 30 September 2026 it applies in Brazil, Indonesia, Singapore and Thailand, with a global rollout planned for 2027. Installing with adb remains an official route for unverified apps. Otherwise Android offers an "advanced flow" for unverified apps in Developer options, with a one-time 24-hour wait.
 
 ## 3. Turn it on
 
@@ -107,15 +124,57 @@ Some phones (Xiaomi, Samsung, OnePlus, Oppo, Vivo, and others) kill background a
 - **Advanced Protection Mode (Android 17).** When that security mode is on, Android disables accessibility services that aren't declared assistive tools, which includes AutoSkip.
 - **Needs maintenance** after some YouTube updates (see above).
 
-## Privacy and safety
+---
 
-An accessibility service is powerful: it can read the screen. That's why this app is scoped tightly. It receives events from YouTube only, re-checks the app of every window before reading it, keeps nothing, and declares **no permissions at all**. Without `INTERNET`, Android won't let it open a network connection, so nothing it reads can leave the phone. If you ever fork or share this code, keep it that way, and don't install builds of apps like this from people you don't trust.
+## Free, private and offline, and checked on every build
+
+An accessibility service is powerful: it can read the screen. So AutoSkip makes these promises, and the build enforces the technical ones:
+
+- **No permissions at all, and never INTERNET.** Without the internet permission Android won't let the app open a network connection, so nothing it reads can leave the phone. [`verify-apk.sh`](.github/scripts/verify-apk.sh) inspects every APK the workflows build and fails the build if it requests *any* permission. A release can't be published without passing it.
+- **YouTube only.** It receives events from YouTube only, and re-checks the app of every window before reading it.
+- **Keeps nothing.** It stores only its own settings and the skip counter.
+- **Free, with no ads, accounts, analytics or tracking.**
+
+If you fork this, keep it that way, and don't install builds of apps like this from people you don't trust. Check the fingerprint above.
 
 ## Rules worth knowing
 
 - **YouTube's Terms of Service** forbid accessing the service "using any automated means" without permission. An app that presses Skip for you is automated interaction, even though it only presses a button you could press yourself. YouTube doesn't publish how (or whether) it enforces this against skip helpers, so use it knowing that. The fully sanctioned way to avoid ads is YouTube Premium.
-- **Google Play won't accept it.** Play's Device and Network Abuse policy prohibits apps that "interfere with another app displaying ads", and Play's Accessibility API policy limits how automation apps may use the API. Share it as a GitHub release, or through F-Droid / IzzyOnDroid, rather than Play.
-- **Licence.** Pick one (for example MIT) before publishing.
+- **Google Play won't accept it.** Play's Device and Network Abuse policy prohibits apps that "interfere with another app displaying ads", and Play's Accessibility API policy limits how automation apps may use the API. It is distributed through this repository's Releases page instead.
+- **Licence.** MIT, see [LICENSE](LICENSE). The software comes with no warranty.
+
+---
+
+## Maintainers
+
+### Publishing a new version
+
+1. In [`app/build.gradle.kts`](app/build.gradle.kts), raise `versionCode` by 1 and set `versionName` (for example `1.1`).
+2. Commit and push.
+3. Tag the commit `v` + versionName and push the tag:
+   ```bash
+   git tag v1.1 && git push origin v1.1
+   ```
+   Or on GitHub: **Releases → Draft a new release → Choose a tag → type `v1.1` → Create new tag → Publish release**.
+
+The **Release** workflow then runs the tests, builds the APK, checks it requests no permissions and is signed with the release key, and attaches `AutoSkip-v1.1.apk` plus its checksum to the release. It refuses to publish if the tag doesn't match `versionName`.
+
+### The signing key
+
+The release key is never stored in this repository. It lives in two GitHub secrets (**Settings → Secrets and variables → Actions**):
+
+| Secret | Contents |
+| --- | --- |
+| `AUTOSKIP_KEYSTORE_BASE64` | The PKCS12 keystore, base64-encoded |
+| `AUTOSKIP_KEYSTORE_PASSWORD` | Its password (also the key's password; alias `autoskip`) |
+
+Its certificate fingerprint is recorded in [`.github/release-cert-sha256`](.github/release-cert-sha256), and releases signed with anything else are refused.
+
+Keep an offline backup of the key. GitHub never shows a secret again after you save it, and if the key is lost, no future version can install over existing ones: everyone would have to uninstall and reinstall. Never commit the key (`.gitignore` blocks `*.p12`, `*.jks` and `*.keystore`).
+
+To build a signed APK on your own computer, decode the keystore to a file outside the repository and set `AUTOSKIP_KEYSTORE` (its path) and `AUTOSKIP_KEYSTORE_PASSWORD` before running `./gradlew assembleRelease`.
+
+---
 
 ## Ideas for next steps
 
