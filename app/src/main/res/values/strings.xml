@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AutoSkip</string>
+    <string name="tagline">Presses YouTube\'s own Skip button for you as soon as it appears. It never blocks ads.</string>
+
+    <!-- Shown in Settings > Accessibility -->
+    <string name="service_label">AutoSkip for YouTube</string>
+    <string name="service_description">Presses the Skip button in the YouTube app for you once YouTube shows it, and can mute ads while they play. It only looks at the YouTube app, never reads other apps, keeps nothing it sees, and has no internet access.</string>
+
+    <!-- Status -->
+    <string name="status_on">On</string>
+    <string name="status_on_detail">Watching the YouTube app. Play a video with an ad to try it.</string>
+    <string name="status_off">Off</string>
+    <string name="status_off_detail">Turn on AutoSkip in Accessibility settings. Android doesn\'t let apps do this for themselves.</string>
+    <string name="status_stuck">Turned on, but not running</string>
+    <string name="status_stuck_detail">Android has stopped the service. In Accessibility settings, turn AutoSkip off and on again, then check that battery saving isn\'t closing this app.</string>
+    <string name="disclosure">What it accesses: AutoSkip uses Android\'s Accessibility API to read the YouTube app\'s screen, so it can find the Skip button and press it. It reads nothing from other apps, stores nothing it sees, and cannot send data anywhere because it has no internet permission.</string>
+    <string name="button_open_settings">Open Accessibility settings</string>
+    <string name="button_manage">Accessibility settings</string>
+    <string name="youtube_missing">The YouTube app isn\'t installed on this phone. AutoSkip only works with the official YouTube app.</string>
+
+    <!-- Restricted settings -->
+    <string name="restricted_title">Switch greyed out, or a \"Restricted setting\" message?</string>
+    <string name="restricted_body">Android 13 and later block Accessibility for apps installed from a downloaded APK. Open App info, tap the three-dot menu at the top right, choose \"Allow restricted settings\", confirm, then come back and turn AutoSkip on. Installing from Android Studio or with adb avoids this.</string>
+    <string name="button_app_info">Open App info</string>
+
+    <!-- Settings -->
+    <string name="section_settings">Settings</string>
+    <string name="setting_enabled">Skip ads automatically</string>
+    <string name="delay_none">Press Skip as soon as it appears</string>
+    <plurals name="delay_seconds">
+        <item quantity="one">Wait %d second after Skip appears</item>
+        <item quantity="other">Wait %d seconds after Skip appears</item>
+    </plurals>
+    <string name="delay_description">Seconds to wait before pressing Skip</string>
+    <string name="setting_mute">Mute ads while they play</string>
+    <string name="setting_mute_detail">Also silences ads that have no Skip button. Sound comes back when the ad ends, or press a volume key.</string>
+    <string name="setting_verbose">Debug logging</string>
+    <string name="setting_verbose_detail">Writes what AutoSkip sees to logcat (tag AutoSkip). Use it to fix AutoSkip after a YouTube update.</string>
+
+    <!-- Stats -->
+    <string name="section_stats">Skipped</string>
+    <string name="stats_none">No ads skipped yet.</string>
+    <plurals name="stats_count">
+        <item quantity="one">%1$d ad skipped. Last one %2$s.</item>
+        <item quantity="other">%1$d ads skipped. Last one %2$s.</item>
+    </plurals>
+    <string name="button_reset_stats">Reset count</string>
+
+    <string name="footer">Not affiliated with YouTube or Google. Skippable ads only: AutoSkip presses the button YouTube already shows you. Ads without a Skip button still play (you can mute them).</string>
+    <string name="no_settings_screen">This phone has no such settings screen. Open Settings and search for Accessibility.</string>
+</resources>

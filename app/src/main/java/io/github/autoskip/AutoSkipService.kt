@@ -1,0 +1,365 @@
+package io.github.autoskip
+
+import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.content.Intent
+import android.content.SharedPreferences
+import android.graphics.Path
+import android.graphics.Rect
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.util.Log
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
+
+/**
+ * Watches the YouTube app and presses its "Skip" button once YouTube shows it.
+ *
+ * How it works, in the same spirit as the YouTube Ad Auto-skipper browser extension:
+ *  1. Android delivers this service events from the YouTube app only (see
+ *     res/xml/autoskip_service.xml). Each event schedules a scan of YouTube's screen.
+ *  2. A scan copies YouTube's accessibility tree into a flat list and asks
+ *     [SkipDetector] whether an ad is on screen and whether the Skip control is ready.
+ *  3. While an ad is on screen it rescans every 300 ms (the extension polls every
+ *     200 ms); while YouTube is open with no ad it rescans once a second as a safety net;
+ *     with YouTube closed it does nothing at all.
+ *  4. When the control is ready (and any delay you chose has passed) it presses it with
+ *     ACTION_CLICK, the same action TalkBack uses. Only if YouTube refuses that does it
+ *     fall back to a tap at the button, and never if something is drawn over the button.
+ *
+ * It has no INTERNET permission, so nothing it reads can leave the phone.
+ */
+class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPreferenceChangeListener {
+
+    private lateinit var prefs: Prefs
+    private lateinit var muter: AdMuter
+
+    private val handler = Handler(Looper.getMainLooper())
+    private val scanRunnable = Runnable { scan() }
+    private var scheduledFor = Long.MAX_VALUE
+    private var lastScanAt = 0L
+
+    // State for the ad (or run of back-to-back ads) currently on screen.
+    private var adActive = false
+    private var adStartedAt = 0L
+    private var adLastSeenAt = 0L
+    private var readySince = 0L
+    private var cooldownUntil = 0L
+    private var attempts = 0
+    private var awaitingConfirm = false
+    private var dumpedThisAd = false
+
+    private val rect = Rect()
+
+    private class YtWindow(val root: AccessibilityNodeInfo, val box: Box, val layer: Int)
+    private class AnyWindow(val box: Box, val layer: Int, val isYouTube: Boolean)
+
+    override fun onCreate() {
+        super.onCreate()
+        prefs = Prefs(this)
+        muter = AdMuter(this, prefs)
+    }
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        // If the process was killed while an ad had us muted, put the sound back first.
+        muter.release("service started")
+        prefs.sp.registerOnSharedPreferenceChangeListener(this)
+        isRunning = true
+        log("connected")
+        requestScan(0)
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.packageName?.toString() != YOUTUBE) return
+        requestScan(MIN_SCAN_GAP_MS)
+    }
+
+    override fun onInterrupt() {
+        muter.release("interrupted")
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        shutdown()
+        return super.onUnbind(intent)
+    }
+
+    override fun onDestroy() {
+        shutdown()
+        super.onDestroy()
+    }
+
+    override fun onSharedPreferenceChanged(sp: SharedPreferences?, key: String?) {
+        if (key == Prefs.KEY_ENABLED || key == Prefs.KEY_MUTE) {
+            muter.update(adActive, SystemClock.uptimeMillis())
+            requestScan(0)
+        }
+    }
+
+    private fun shutdown() {
+        isRunning = false
+        handler.removeCallbacks(scanRunnable)
+        scheduledFor = Long.MAX_VALUE
+        prefs.sp.unregisterOnSharedPreferenceChangeListener(this)
+        muter.release("service stopped")
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Scheduling
+
+    /** Scan no sooner than [gapMs] after the previous scan. An earlier request wins. */
+    private fun requestScan(gapMs: Long) {
+        val now = SystemClock.uptimeMillis()
+        val at = maxOf(now, lastScanAt + gapMs)
+        if (at >= scheduledFor) return
+        handler.removeCallbacks(scanRunnable)
+        scheduledFor = at
+        handler.postAtTime(scanRunnable, at)
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Scanning
+
+    private fun scan() {
+        scheduledFor = Long.MAX_VALUE
+        val now = SystemClock.uptimeMillis()
+        lastScanAt = now
+
+        if (!prefs.skipEnabled) {
+            endAd(now)
+            return
+        }
+
+        val allWindows = ArrayList<AnyWindow>()
+        val ytWindows = try {
+            findYouTubeWindows(allWindows)
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "could not read windows", e)
+            emptyList()
+        }
+        if (ytWindows.isEmpty()) {
+            // YouTube isn't on screen. Its next event will wake us up again.
+            endAd(now)
+            return
+        }
+
+        var adSeen = false
+        var waiting = false
+        var targetSeen = false
+        for (w in ytWindows) {
+            val nodes = ArrayList<UiNode>(512)
+            val handles = ArrayList<AccessibilityNodeInfo>(512)
+            try {
+                collect(w.root, -1, 0, nodes, handles)
+            } catch (e: RuntimeException) {
+                // The tree changed under us mid-read. The next scan will see the new one.
+                continue
+            }
+            if (nodes.isEmpty()) continue
+
+            val r = SkipDetector.analyze(nodes, w.box)
+            if (r.adOnScreen) adSeen = true
+            if (r.waiting) waiting = true
+            if (r.target != null && r.label != null) {
+                if (!targetSeen) tryPress(now, nodes, handles, r, w, allWindows)
+                targetSeen = true
+            } else if (r.adOnScreen && !r.waiting) {
+                maybeDump(now, nodes, r)
+            }
+        }
+
+        if (!targetSeen) {
+            // The control is gone: either our press worked, or the ad ended on its own.
+            if (awaitingConfirm && now >= cooldownUntil) {
+                prefs.recordSkip(System.currentTimeMillis())
+                log("skip confirmed (button gone)")
+            }
+            awaitingConfirm = false
+            readySince = 0L
+            attempts = 0
+        }
+
+        if (adSeen) {
+            adLastSeenAt = now
+            if (!adActive) {
+                adActive = true
+                adStartedAt = now
+                dumpedThisAd = false
+                log("ad on screen")
+            }
+        } else if (adActive && now - adLastSeenAt > AD_GONE_MS) {
+            endAd(now)
+        }
+        muter.update(adActive, now)
+
+        val busy = adActive || waiting || targetSeen
+        requestScan(if (busy) FAST_POLL_MS else IDLE_POLL_MS)
+    }
+
+    private fun endAd(now: Long) {
+        if (adActive) log("ad gone")
+        adActive = false
+        readySince = 0L
+        attempts = 0
+        awaitingConfirm = false
+        muter.update(false, now)
+    }
+
+    private fun findYouTubeWindows(all: MutableList<AnyWindow>): List<YtWindow> {
+        val result = ArrayList<YtWindow>(2)
+        for (w in windows) {
+            w.getBoundsInScreen(rect)
+            val box = Box(rect.left, rect.top, rect.right, rect.bottom)
+            val ytRoot = w.root?.takeIf { it.packageName?.toString() == YOUTUBE }
+            all += AnyWindow(box, w.layer, ytRoot != null)
+            if (ytRoot != null) result += YtWindow(ytRoot, box, w.layer)
+        }
+        if (result.isEmpty()) {
+            // Some devices report no window list; fall back to the focused window.
+            val root = rootInActiveWindow
+            if (root != null && root.packageName?.toString() == YOUTUBE) {
+                root.getBoundsInScreen(rect)
+                result += YtWindow(root, Box(rect.left, rect.top, rect.right, rect.bottom), Int.MAX_VALUE)
+            }
+        }
+        return result
+    }
+
+    /** Copies the tree into a flat pre-order list, keeping the live nodes alongside for clicking. */
+    private fun collect(
+        node: AccessibilityNodeInfo,
+        parent: Int,
+        depth: Int,
+        out: MutableList<UiNode>,
+        handles: MutableList<AccessibilityNodeInfo>,
+    ) {
+        if (out.size >= MAX_NODES || depth > MAX_DEPTH) return
+        node.getBoundsInScreen(rect)
+        val ui = UiNode(
+            index = out.size,
+            parent = parent,
+            viewId = SkipDetector.entryName(node.viewIdResourceName),
+            text = SkipDetector.normalize(node.text),
+            desc = SkipDetector.normalize(node.contentDescription),
+            clickable = node.isClickable,
+            enabled = node.isEnabled,
+            visible = node.isVisibleToUser,
+            bounds = Box(rect.left, rect.top, rect.right, rect.bottom),
+        )
+        out += ui
+        handles += node
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collect(child, ui.index, depth + 1, out, handles)
+        }
+        ui.subtreeEnd = out.size - 1
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Pressing
+
+    private fun tryPress(
+        now: Long,
+        nodes: List<UiNode>,
+        handles: List<AccessibilityNodeInfo>,
+        r: SkipDetector.Result,
+        window: YtWindow,
+        allWindows: List<AnyWindow>,
+    ) {
+        if (now < cooldownUntil || attempts >= MAX_ATTEMPTS) return
+
+        if (readySince == 0L) {
+            readySince = now
+            log("Skip is ready (${r.match}); delay ${prefs.delaySeconds}s")
+        }
+        if (now - readySince < prefs.delaySeconds * 1000L) return
+
+        val target = nodes[r.target!!]
+        val label = nodes[r.label!!]
+        var how: String? = null
+
+        if (handles[target.index].performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            how = "ACTION_CLICK"
+        } else if (label.index != target.index &&
+            handles[label.index].performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        ) {
+            how = "ACTION_CLICK on label"
+        } else {
+            val x = label.bounds.centerX
+            val y = label.bounds.centerY
+            val covered = SkipDetector.isPointCovered(nodes, target, x, y) ||
+                isCoveredByAnotherWindow(x, y, window, allWindows)
+            if (covered) {
+                log("not tapping: something is drawn over the Skip button")
+            } else if (tap(x, y)) {
+                how = "tap at $x,$y"
+            }
+        }
+
+        attempts++
+        cooldownUntil = now + COOLDOWN_MS
+        readySince = 0L
+        if (how != null) {
+            awaitingConfirm = true
+            log("pressed Skip via $how (attempt $attempts)")
+        }
+    }
+
+    private fun isCoveredByAnotherWindow(x: Int, y: Int, mine: YtWindow, all: List<AnyWindow>): Boolean =
+        all.any { !it.isYouTube && it.layer > mine.layer && it.box.contains(x, y) }
+
+    private fun tap(x: Int, y: Int): Boolean {
+        if (x < 0 || y < 0) return false
+        val path = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
+        val stroke = GestureDescription.StrokeDescription(path, 0L, TAP_DURATION_MS)
+        return dispatchGesture(GestureDescription.Builder().addStroke(stroke).build(), null, null)
+    }
+
+    // ---------------------------------------------------------------------------------
+    // Logging
+
+    private fun log(msg: String) {
+        if (prefs.verboseLogging) Log.d(TAG, msg)
+    }
+
+    /**
+     * With verbose logging on, if an ad has been on screen for a while and no Skip control
+     * was recognised, write every labelled node to logcat once. That's the material you need
+     * to update SkipDetector after a YouTube update.
+     */
+    private fun maybeDump(now: Long, nodes: List<UiNode>, r: SkipDetector.Result) {
+        if (!prefs.verboseLogging || dumpedThisAd || !adActive || now - adStartedAt < DUMP_AFTER_MS) return
+        dumpedThisAd = true
+        Log.d(TAG, "ad on screen (${r.adEvidence}) but no Skip control recognised. Labelled nodes:")
+        for (n in nodes) {
+            if (n.viewId == null && n.text.isEmpty() && n.desc.isEmpty()) continue
+            Log.d(
+                TAG,
+                "  #${n.index} id=${n.viewId} text='${n.text}' desc='${n.desc}' " +
+                    "click=${n.clickable} enabled=${n.enabled} visible=${n.visible} ${n.bounds}",
+            )
+        }
+    }
+
+    companion object {
+        const val YOUTUBE = "com.google.android.youtube"
+        private const val TAG = "AutoSkip"
+
+        /** Read by the app screen to tell "enabled" apart from "actually running". */
+        @Volatile
+        var isRunning = false
+            private set
+
+        private const val MIN_SCAN_GAP_MS = 250L
+        private const val FAST_POLL_MS = 300L
+        private const val IDLE_POLL_MS = 1000L
+        private const val AD_GONE_MS = 1200L
+        private const val COOLDOWN_MS = 1500L
+        private const val MAX_ATTEMPTS = 4
+        private const val TAP_DURATION_MS = 60L
+        private const val DUMP_AFTER_MS = 6000L
+        private const val MAX_NODES = 3000
+        private const val MAX_DEPTH = 64
+    }
+}

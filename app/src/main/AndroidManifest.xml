@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        No permissions at all. In particular no INTERNET: without it Android refuses to let
+        this app open a network socket, so nothing the service reads can leave the phone.
+        Accessibility plus internet is the shape of banking trojans; keep it that way.
+    -->
+
+    <!-- Lets the app check that YouTube is installed (package visibility, Android 11+). -->
+    <queries>
+        <package android:name="com.google.android.youtube" />
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AutoSkip">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+            exported="true" is required because the system binds to it. Only the system holds
+            BIND_ACCESSIBILITY_SERVICE, so no other app can.
+        -->
+        <service
+            android:name=".AutoSkipService"
+            android:exported="true"
+            android:label="@string/service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/autoskip_service" />
+        </service>
+    </application>
+</manifest>

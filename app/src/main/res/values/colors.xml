@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="accent">#00796B</color>
+    <color name="text_secondary">#5F6368</color>
+    <color name="warning">#B3261E</color>
+    <color name="card_background">#F1F3F4</color>
+    <color name="window_background">#FFFFFF</color>
+    <color name="ic_launcher_background">#00796B</color>
+</resources>

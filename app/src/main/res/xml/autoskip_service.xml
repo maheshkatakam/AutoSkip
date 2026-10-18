@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The accessibility service is scoped as tightly as Android allows.
+
+    packageNames         Events are delivered from the YouTube app only. The service also
+                         re-checks the package of every window before reading it.
+    flagReportViewIds    Fills in view IDs such as "skip_ad_button", the most stable,
+                         language-independent way to find the control.
+    flagIncludeNotImportantViews
+                         The pressable container around the "Skip" label is sometimes marked
+                         not important for accessibility; without this it would be invisible.
+    flagRetrieveInteractiveWindows
+                         Lets the service see YouTube's window even when another window has
+                         focus (for example a system dialog or picture-in-picture).
+    canPerformGestures   Allows the fallback tap when YouTube ignores ACTION_CLICK. The
+                         service never taps if anything is drawn over the button.
+    isAccessibilityTool  Left false. Google reserves "true" for tools whose main purpose is
+                         helping people with disabilities. With Android 17's Advanced
+                         Protection Mode turned on, Android disables services that are not
+                         accessibility tools, so AutoSkip will stop while that mode is on.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagIncludeNotImportantViews|flagRetrieveInteractiveWindows"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/service_description"
+    android:isAccessibilityTool="false"
+    android:notificationTimeout="100"
+    android:packageNames="com.google.android.youtube"
+    android:settingsActivity="io.github.autoskip.MainActivity" />
