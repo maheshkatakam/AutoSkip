@@ -13,6 +13,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import java.io.File
 
 /**
  * A fake player for the emulator test. It plays [ads] fake ads, then a stretch of normal
@@ -68,6 +69,7 @@ class FakePlayerActivity : Activity() {
             setTurnScreenOn(true)
         }
         adsTotal = intent.getIntExtra("ads", 3)
+        eventsFile.delete()
         setContentView(buildUi())
         log("START app=$packageName ads=$adsTotal style=${if (musicStyle) "music" else "youtube"}")
         handler.postDelayed({ startAd() }, START_DELAY_MS)
@@ -207,8 +209,16 @@ class FakePlayerActivity : Activity() {
         }
     }
 
+    /** Every event goes to logcat and to files/events.log, which the test reads with run-as. */
+    private val eventsFile get() = File(filesDir, "events.log")
+
     private fun log(msg: String) {
         Log.i(TAG, msg)
+        try {
+            eventsFile.appendText("$msg\n")
+        } catch (e: Exception) {
+            Log.w(TAG, "could not write events.log", e)
+        }
     }
 
     companion object {
