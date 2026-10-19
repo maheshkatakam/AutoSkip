@@ -97,13 +97,17 @@ for app in "${ROUNDS[@]}"; do
   label="Round $round_no ($name, $ADS_PER_ROUND ads)"
   read -r before_total before_music <<<"$(saved_counts)"
 
+  # A fresh ID per round: only a RESULT carrying it counts, so a leftover result from an
+  # earlier round can never be mistaken for this one.
+  token="r$round_no-$RANDOM$RANDOM"
+  sh_ run-as "$pkg" rm -f files/events.log >/dev/null 2>&1 || true
   adb logcat -c
-  sh_ am start -W -n "$pkg/$FAKE_ACTIVITY" --ei ads "$ADS_PER_ROUND" >/dev/null
+  sh_ am start -W -n "$pkg/$FAKE_ACTIVITY" --ei ads "$ADS_PER_ROUND" --es token "$token" >/dev/null
   events=""
   result=""
   for _ in $(seq 1 120); do
     events="$(sh_ run-as "$pkg" cat files/events.log 2>/dev/null)"
-    result="$(grep -o 'RESULT .*' <<<"$events" | tail -n 1)"
+    result="$(grep -o "RESULT .* token=$token\$" <<<"$events" | tail -n 1)"
     [ -n "$result" ] && break
     sleep 1
   done

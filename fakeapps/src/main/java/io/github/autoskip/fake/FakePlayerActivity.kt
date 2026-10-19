@@ -24,7 +24,7 @@ import java.io.File
  *   AD_NOT_SKIPPED n           nobody pressed Skip within 8 s (bad)
  *   WRONG_PRESS what           a trap was pressed: the advertiser link, a Premium upsell,
  *                              or a plain "Skip" button shown with no ad playing (bad)
- *   RESULT skipped=… expected=… wrong=… early=… missed=…
+ *   RESULT skipped=… expected=… wrong=… early=… missed=… token=…
  *
  * The "youtube" flavour mimics YouTube: view IDs (ad_progress_text, skip_ad_button) and a
  * countdown written inside the Skip button. The "music" flavour mimics what YouTube Music
@@ -38,6 +38,7 @@ class FakePlayerActivity : Activity() {
     private val musicStyle get() = packageName.endsWith(".music")
 
     private var adsTotal = 3
+    private var token = ""   // set by the test for each round, echoed in START and RESULT
     private var adIndex = 0
     private var skipped = 0
     private var wrong = 0
@@ -69,9 +70,10 @@ class FakePlayerActivity : Activity() {
             setTurnScreenOn(true)
         }
         adsTotal = intent.getIntExtra("ads", 3)
+        token = intent.getStringExtra("token") ?: "none"
         eventsFile.delete()
         setContentView(buildUi())
-        log("START app=$packageName ads=$adsTotal style=${if (musicStyle) "music" else "youtube"}")
+        log("START token=$token app=$packageName ads=$adsTotal style=${if (musicStyle) "music" else "youtube"}")
         handler.postDelayed({ startAd() }, START_DELAY_MS)
     }
 
@@ -158,7 +160,7 @@ class FakePlayerActivity : Activity() {
         finished = true
         normalBox.visibility = View.GONE
         status.text = "Done"
-        log("RESULT skipped=$skipped expected=$adsTotal wrong=$wrong early=$early missed=$missed")
+        log("RESULT skipped=$skipped expected=$adsTotal wrong=$wrong early=$early missed=$missed token=$token")
     }
 
     // ---------------------------------------------------------------------------------
