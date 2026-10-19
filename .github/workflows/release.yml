@@ -1,14 +1,15 @@
 name: Release
 
-# Publishes a version on the Releases page. Start it either way:
-#   - on GitHub: Releases > Draft a new release > new tag such as v1.0 > Publish release
-#   - from a terminal: push a tag such as v1.0
+# Attaches the signed APK to a release when you publish one: on GitHub, Releases > Draft a
+# new release > new tag such as v1.2 > Publish release (or `gh release create v1.2`).
 # The tag must match versionName in app/build.gradle.kts, and the APK must be signed with
 # the release key recorded in .github/release-cert-sha256, or no APK is attached.
+#
+# Every action is pinned to an exact commit (version in the comment), so a compromised or
+# changed action can't silently run with the signing key. Dependabot proposes updates monthly
+# (.github/dependabot.yml).
 
 on:
-  push:
-    tags: ['v*']
   release:
     types: [published]
 
@@ -23,7 +24,9 @@ jobs:
   release:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Check the tag matches the app version
         run: |
@@ -33,32 +36,26 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961  # v5.7.0
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v4
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd  # v4.0.4
         with:
           packages: 'platforms;android-36 build-tools;36.1.0'
 
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c  # v5.0.2
 
       - name: Unit tests
         run: ./gradlew :app:testDebugUnitTest --no-daemon
 
-      - name: Load the release key
+      # The key exists only inside this step, for the Gradle build, and is deleted after it.
+      - name: Build signed APK
         env:
           KEYSTORE_BASE64: ${{ secrets.AUTOSKIP_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.AUTOSKIP_KEYSTORE_PASSWORD }}
-        run: .github/scripts/load-release-key.sh
-
-      - name: Build signed APK
-        run: ./gradlew :app:assembleRelease --no-daemon
-
-      - name: Remove the key file
-        if: always()
-        run: rm -f "$RUNNER_TEMP/autoskip-release.p12"
+        run: .github/scripts/load-release-key.sh ./gradlew :app:assembleRelease --no-daemon
 
       - name: Check permissions and signature
         run: .github/scripts/verify-apk.sh app/build/outputs/apk/release/app-release.apk --release
@@ -90,23 +87,22 @@ jobs:
 
           To check a download yourself: \`apksigner verify --print-certs $apk\` must show that value as the certificate SHA-256 digest. The file's own SHA-256 checksum is in **$apk.sha256**.
 
-          This build requests **no Android permissions**, including no internet access; the release was refused automatically otherwise.
+          This build requests **no Android permissions**, including no internet access; no APK would have been attached otherwise.
           NOTES
 
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            # Made on the website (or by an earlier run): attach the files, and add the
-            # install and verification notes below anything already written there.
-            gh release upload "$tag" "$apk" "$apk.sha256" --clobber --repo "$GITHUB_REPOSITORY"
-            body="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
-            if ! grep -q "## Check it's genuine" <<<"$body"; then
-              if [ -n "$(tr -d '[:space:]' <<<"$body")" ]; then
-                printf '%s\n\n' "$body" | cat - notes.md > notes-combined.md
-              else
-                cp notes.md notes-combined.md
-              fi
-              gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file notes-combined.md
+          # The release already exists (you published it). Attach the files, and add the
+          # install and verification notes below anything you wrote.
+          if ! gh release upload "$tag" "$apk" "$apk.sha256" --clobber --repo "$GITHUB_REPOSITORY"; then
+            echo "::error::Could not attach the APK to release $tag."
+            exit 1
+          fi
+          body="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
+          if ! grep -q "## Check it's genuine" <<<"$body"; then
+            if [ -n "$(tr -d '[:space:]' <<<"$body")" ]; then
+              printf '%s\n\n' "$body" | cat - notes.md > notes-combined.md
+            else
+              cp notes.md notes-combined.md
             fi
-          else
-            gh release create "$tag" "$apk" "$apk.sha256" --repo "$GITHUB_REPOSITORY" \
-              --title "AutoSkip $tag" --notes-file notes.md --verify-tag
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file notes-combined.md \
+              || echo "::warning::The APK is attached, but the release notes could not be updated."
           fi

@@ -6,6 +6,10 @@ name: Build APK
 # On your own repo (where the signing secrets exist) the APK is signed with the permanent
 # release key, so each build installs over the previous one. Pull requests from forks have
 # no access to secrets and get the throwaway debug key instead.
+#
+# Every action is pinned to an exact commit (version in the comment), so a compromised or
+# changed action can't silently run with the signing key. Dependabot proposes updates monthly
+# (.github/dependabot.yml).
 
 on:
   push:
@@ -23,31 +27,35 @@ jobs:
     env:
       HAS_RELEASE_KEY: ${{ secrets.AUTOSKIP_KEYSTORE_BASE64 != '' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961  # v5.7.0
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v4
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd  # v4.0.4
         with:
           packages: 'platforms;android-36 build-tools;36.1.0'
 
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c  # v5.0.2
 
       - name: Unit tests
         run: ./gradlew :app:testDebugUnitTest --no-daemon
 
-      - name: Load the release key
-        if: env.HAS_RELEASE_KEY == 'true'
+      # The key exists only inside this step, for the Gradle build, and is deleted after it.
+      - name: Build APK
         env:
           KEYSTORE_BASE64: ${{ secrets.AUTOSKIP_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.AUTOSKIP_KEYSTORE_PASSWORD }}
-        run: .github/scripts/load-release-key.sh
-
-      - name: Build APK
-        run: ./gradlew :app:assembleRelease --no-daemon
+        run: |
+          if [ "$HAS_RELEASE_KEY" = "true" ]; then
+            .github/scripts/load-release-key.sh ./gradlew :app:assembleRelease --no-daemon
+          else
+            ./gradlew :app:assembleRelease --no-daemon
+          fi
 
       - name: Check permissions and signature
         run: |
@@ -58,11 +66,7 @@ jobs:
             .github/scripts/verify-apk.sh app/build/outputs/apk/release/app-release.apk
           fi
 
-      - name: Remove the key file
-        if: always()
-        run: rm -f "$RUNNER_TEMP/autoskip-release.p12"
-
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
         with:
           name: AutoSkip-apk
           path: app/build/outputs/apk/release/app-release.apk
@@ -78,18 +82,20 @@ jobs:
         # Android 11 and Android 16.
         api-level: [30, 36]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961  # v5.7.0
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v4
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd  # v4.0.4
         with:
           packages: 'platforms;android-36 build-tools;36.1.0'
 
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c  # v5.0.2
 
       - name: Build AutoSkip (debug) and the fake apps
         run: ./gradlew :app:assembleDebug :fakeapps:assembleYoutubeDebug :fakeapps:assembleMusicDebug --no-daemon
@@ -107,7 +113,7 @@ jobs:
       - name: Play fake ads and check what AutoSkip pressed and counted
         id: e2e
         continue-on-error: true
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
           api-level: ${{ matrix.api-level }}
           # The plain Android image: no Google apps. Google's images ship a YouTube stub
@@ -133,7 +139,7 @@ jobs:
 
       - name: Retry, because the emulator didn't start
         if: steps.e2e.outcome == 'failure' && steps.started.outputs.first_attempt == 'false'
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
           api-level: ${{ matrix.api-level }}
           # The plain Android image: no Google apps. Google's images ship a YouTube stub

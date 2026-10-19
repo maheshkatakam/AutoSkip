@@ -1,0 +1,11 @@
+# Once a month, Dependabot opens one pull request that updates the pinned GitHub Actions in
+# .github/workflows. Merge it if its checks pass.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns: ["*"]

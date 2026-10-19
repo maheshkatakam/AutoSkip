@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Runs on your computer, no phone needed:  ./gradlew testDebugUnitTest
+ * Runs on your computer, no phone needed:  ./gradlew :app:testDebugUnitTest
  *
  * Each test builds a small fake YouTube screen and checks what the detector decides.
  */

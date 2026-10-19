@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Turns the two signing secrets into a key file Gradle can use, and checks them first.
+# Checks the two signing secrets, then runs one command (the Gradle build) with the release
+# key available to it, and deletes the key file afterwards, whatever happens.
+#
+#   load-release-key.sh ./gradlew :app:assembleRelease --no-daemon
 #
 # Reads:   KEYSTORE_BASE64    (secret AUTOSKIP_KEYSTORE_BASE64)
 #          KEYSTORE_PASSWORD  (secret AUTOSKIP_KEYSTORE_PASSWORD)
-# Writes:  $RUNNER_TEMP/autoskip-release.p12, and sets AUTOSKIP_KEYSTORE and
-#          AUTOSKIP_KEYSTORE_PASSWORD for the following steps.
+# Gives the command: AUTOSKIP_KEYSTORE (a temporary key file) and AUTOSKIP_KEYSTORE_PASSWORD.
+# Nothing is exported to later workflow steps, so no other step ever sees the key.
 #
 # Copy-paste slips are forgiven: spaces, line breaks, and the BEGIN/END marker lines from
 # the backup file are removed. Anything else wrong is reported as an error that says which
@@ -12,6 +15,8 @@
 set -euo pipefail
 
 fail() { echo "::error title=Signing key::$1"; exit 1; }
+
+[ "$#" -gt 0 ] || { echo "usage: load-release-key.sh <command to run with the key>" >&2; exit 2; }
 
 b64="${KEYSTORE_BASE64:-}"
 pw="${KEYSTORE_PASSWORD:-}"
@@ -32,7 +37,8 @@ if [ $(( ${#b64} % 4 )) -ne 0 ]; then
   fail "AUTOSKIP_KEYSTORE_BASE64 looks cut off (length ${#b64}, should be a multiple of 4). Copy the whole long line again."
 fi
 
-key="$RUNNER_TEMP/autoskip-release.p12"
+key="${RUNNER_TEMP:-/tmp}/autoskip-release.p12"
+trap 'rm -f "$key"' EXIT
 printf '%s' "$b64" | base64 -d > "$key" 2>/dev/null \
   || fail "AUTOSKIP_KEYSTORE_BASE64 could not be decoded (length ${#b64}). Copy the whole long line again."
 
@@ -75,8 +81,5 @@ expected="$(tr -d '[:space:]' < "$(dirname "$0")/../release-cert-sha256" | tr 'A
 [ "$actual" = "$expected" ] \
   || fail "The key in AUTOSKIP_KEYSTORE_BASE64 is a different key from the AutoSkip release key (fingerprint $actual, expected $expected)."
 
-{
-  echo "AUTOSKIP_KEYSTORE=$key"
-  echo "AUTOSKIP_KEYSTORE_PASSWORD=$pw"
-} >> "$GITHUB_ENV"
 echo "OK: release key loaded and matches .github/release-cert-sha256."
+AUTOSKIP_KEYSTORE="$key" AUTOSKIP_KEYSTORE_PASSWORD="$pw" "$@"

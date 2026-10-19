@@ -19,7 +19,7 @@ android {
         applicationId = "io.github.autoskip"
         minSdk = 26          // Android 8.0
         targetSdk = 36       // Android 16
-        // For a new release, raise both, then push a tag "v" + versionName (see README).
+        // For a new release, raise both, then publish a release tagged "v" + versionName (see README).
         versionCode = 2
         versionName = "1.1"
     }

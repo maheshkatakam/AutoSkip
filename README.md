@@ -24,7 +24,7 @@ c5e60d4195e3fd86e3c4f407ec998d184a478b935770e7add7552afb50afeb62
 ```
 
 ```bash
-apksigner verify --print-certs AutoSkip-v1.0.apk   # "certificate SHA-256 digest" must match the line above
+apksigner verify --print-certs AutoSkip-v1.1.apk   # "certificate SHA-256 digest" must match the line above
 ```
 
 `apksigner` comes with the Android SDK build tools. Builds from forks or from Android Studio are signed with a different key, so uninstall those before installing an official release.
@@ -67,19 +67,19 @@ Installing this way (over USB/adb) avoids Android's "restricted settings" block,
 
 ### Option B: GitHub builds it for you
 
-Every push runs the **Build APK** workflow: unit tests, a build, a check that the APK requests no permissions, and the [emulator test](#how-its-tested). Open the **Actions** tab, click the latest green run, and download **AutoSkip-apk**. On this repository the APK is signed with the release key, so it installs over an official release. Forks get a throwaway key instead.
+Every push runs the **Build APK** workflow: unit tests, a build, a check that the APK requests no permissions, and the [emulator test](#how-its-tested). Open the **Actions** tab, click the latest green run, and download **AutoSkip-apk** (GitHub asks you to sign in to download these). On this repository the APK is signed with the release key, so it installs over an official release. Forks get a throwaway key instead.
 
 ### Option C: Command line
 
 Needs JDK 17+ and the Android SDK (platform 36, build-tools 36.1.0) with `ANDROID_HOME` set.
 
 ```bash
-./gradlew testDebugUnitTest     # run the detector's unit tests
-./gradlew assembleRelease       # build app/build/outputs/apk/release/app-release.apk
+./gradlew :app:testDebugUnitTest   # run the unit tests
+./gradlew :app:assembleRelease     # build app/build/outputs/apk/release/app-release.apk
 adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
-Without the release key (see [Maintainers](#maintainers)), `assembleRelease` signs with your local debug key.
+Without the release key (see [Maintainers](#maintainers)), `:app:assembleRelease` signs with your local debug key. The `:app:` part skips the test-only fake apps in `fakeapps/`.
 
 ---
 
@@ -106,7 +106,7 @@ Open YouTube or YouTube Music and play something until a skippable ad starts. Wh
 Every push runs three kinds of test on GitHub, and a red ❌ on a commit means one failed:
 
 - **Detection rules** ([`SkipDetectorTest`](app/src/test/java/io/github/autoskip/SkipDetectorTest.kt)): fake screens, checking which button would be pressed, including every trap below.
-- **Pressing and counting** ([`PressTrackerTest`](app/src/test/java/io/github/autoskip/PressTrackerTest.kt)): scan-by-scan timelines checking when Skip is pressed and that each skipped ad is counted exactly once, including a button that disappears 0.3 s after the press (the case versions 1.0 and 1.1 got wrong, leaving the count at 0), flickers, retries and back-to-back ads.
+- **Pressing and counting** ([`PressTrackerTest`](app/src/test/java/io/github/autoskip/PressTrackerTest.kt)): scan-by-scan timelines checking when Skip is pressed and that each skipped ad is counted exactly once, including a button that disappears 0.3 s after the press (the case version 1.0 got wrong, leaving the count at 0), flickers, retries and back-to-back ads.
 - **Muting** ([`AdMuterTest`](app/src/test/java/io/github/autoskip/AdMuterTest.kt)): when the phone is muted and unmuted, including that Skip unmutes at once, a run of ads stays muted, a volume key wins, and a phone you muted yourself is never unmuted.
 - **The real app on an emulator** ([`e2e.sh`](.github/scripts/e2e.sh)), on Android 11 and Android 16. Two small fake apps ([`fakeapps/`](fakeapps)) install under YouTube's and YouTube Music's package names and play fake ads: YouTube-style with view IDs and a countdown inside the button, YouTube Music-style with no IDs and "Your music will resume after this ad". Each app plays 3 skippable ads plus one unskippable ad, twice: once with **Mute ads while they play** off and once with it on. The test checks that every Skip was pressed, never during its countdown, that none of the traps was pressed ("Visit advertiser", "Skip ads with Premium", and a plain "Skip" button next to a song called "Skip Ads (Remix)" with no ad playing), that AutoSkip's saved counts, total and YouTube Music, match the skips that happened, and, with muting on, that every ad played muted and the sound was back within 0.3 s of each Skip and 0.7 s after the unskippable ad (so YouTube wouldn't start the video with captions). The results appear as notes on the workflow run.
 
@@ -123,7 +123,7 @@ YouTube and YouTube Music rename buttons and view IDs between app versions, so e
    adb shell uiautomator dump /sdcard/ui.xml && adb pull /sdcard/ui.xml
    ```
    Search `ui.xml` for `skip` and look at the `resource-id`, `text` and `content-desc` of the button.
-4. Add what you find to the lists at the top of `SkipDetector.kt`, add a test for it in `SkipDetectorTest.kt`, and run `./gradlew testDebugUnitTest`.
+4. Add what you find to the lists at the top of `SkipDetector.kt`, add a test for it in `SkipDetectorTest.kt`, and run `./gradlew :app:testDebugUnitTest`.
 
 **Other languages.** View IDs work in any language. Labels are English only out of the box, so if your phone is set to Hindi, Spanish and so on, and the ID is missing on your device, add your language's wording for "Skip ad" and "Ad" to the lists.
 
@@ -166,15 +166,11 @@ If you fork this, keep it that way, and don't install builds of apps like this f
 
 ### Publishing a new version
 
-1. In [`app/build.gradle.kts`](app/build.gradle.kts), raise `versionCode` by 1 and set `versionName` (for example `1.1`).
-2. Commit and push.
-3. Tag the commit `v` + versionName and push the tag:
-   ```bash
-   git tag v1.1 && git push origin v1.1
-   ```
-   Or on GitHub: **Releases → Draft a new release → Choose a tag → type `v1.1` → Create new tag → Publish release**.
+1. In [`app/build.gradle.kts`](app/build.gradle.kts), raise `versionCode` by 1 and set `versionName` (for example `1.2`).
+2. Commit and push, and wait for the **Build APK** run to go green.
+3. On GitHub: **Releases → Draft a new release → Choose a tag → type `v1.2` → Create new tag → Publish release**. Write what's new in the description if you like. (From a terminal: `gh release create v1.2 --title "AutoSkip v1.2" --notes "…"`.)
 
-The **Release** workflow then runs the tests, builds the APK, checks it requests no permissions and is signed with the release key, and attaches `AutoSkip-v1.1.apk` plus its checksum to the release. It refuses to publish if the tag doesn't match `versionName`.
+Publishing starts the **Release** workflow. It runs the tests, builds the APK, checks it requests no permissions and is signed with the release key, and attaches `AutoSkip-v1.2.apk` plus its checksum to the release, with install and verification notes added below yours. If the tag doesn't match `versionName`, nothing is attached and the run fails: delete the release and its tag, fix the version, and publish again.
 
 ### The signing key
 
@@ -189,7 +185,11 @@ Its certificate fingerprint is recorded in [`.github/release-cert-sha256`](.gith
 
 Keep an offline backup of the key. GitHub never shows a secret again after you save it, and if the key is lost, no future version can install over existing ones: everyone would have to uninstall and reinstall. Never commit the key (`.gitignore` blocks `*.p12`, `*.jks` and `*.keystore`).
 
-To build a signed APK on your own computer, decode the keystore to a file outside the repository and set `AUTOSKIP_KEYSTORE` (its path) and `AUTOSKIP_KEYSTORE_PASSWORD` before running `./gradlew assembleRelease`.
+To build a signed APK on your own computer, decode the keystore to a file outside the repository and set `AUTOSKIP_KEYSTORE` (its path) and `AUTOSKIP_KEYSTORE_PASSWORD` before running `./gradlew :app:assembleRelease`.
+
+### Keeping the workflows safe
+
+On GitHub the key is only ever handed to the one build step that signs the APK ([`load-release-key.sh`](.github/scripts/load-release-key.sh)), and deleted straight after. Pull requests from forks never receive it. Every GitHub Action the workflows use is pinned to an exact commit, so a changed or compromised action can't quietly run next to the key; once a month Dependabot opens a pull request to update them, and it's safe to merge when its checks pass.
 
 ---
 

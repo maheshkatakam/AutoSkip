@@ -7,7 +7,7 @@ import org.junit.Test
 
 /**
  * Plays scan-by-scan timelines through AdMuter with a fake phone volume, the way
- * AutoSkipService calls it. Runs on your computer:  ./gradlew testDebugUnitTest
+ * AutoSkipService calls it. Runs on your computer:  ./gradlew :app:testDebugUnitTest
  */
 class AdMuterTest {
 

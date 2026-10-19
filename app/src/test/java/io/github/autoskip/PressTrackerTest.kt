@@ -8,7 +8,7 @@ import org.junit.Test
 
 /**
  * Plays scan-by-scan timelines through PressTracker, the way AutoSkipService calls it,
- * and counts the skips it credits. Runs on your computer:  ./gradlew testDebugUnitTest
+ * and counts the skips it credits. Runs on your computer:  ./gradlew :app:testDebugUnitTest
  */
 class PressTrackerTest {
 
@@ -43,7 +43,7 @@ class PressTrackerTest {
 
     @Test
     fun skipThatWorksAtOnceIsCounted() {
-        // The bug in 1.0 and 1.1: the button disappears ~300 ms after the press, well inside the
+        // The bug in 1.0: the button disappears ~300 ms after the press, well inside the
         // 1.5 s press cooldown, and the pending skip was thrown away instead of counted.
         val s = Sim()
         s.visible()          // pressed
