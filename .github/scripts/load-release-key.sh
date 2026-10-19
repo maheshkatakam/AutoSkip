@@ -56,7 +56,17 @@ if ! listing="$(keytool -list -v -keystore "$key" -storetype PKCS12 -storepass "
   if [ "$looks_like_key" = true ]; then
     fail "AUTOSKIP_KEYSTORE_PASSWORD does not unlock the key. Paste the 32-character password from the backup file again (password length received: ${#pw})."
   fi
-  fail "AUTOSKIP_KEYSTORE_BASE64 is not a valid key file. Copy the whole long line again."
+  hint="It is ${#b64} characters long; the key is about 3,500."
+  if [ "$b64" = "$pw" ]; then
+    hint="It holds the same value as AUTOSKIP_KEYSTORE_PASSWORD, so the password was pasted into both."
+  elif [ "${#b64}" -eq 64 ] && [[ "$b64" =~ ^[0-9a-fA-F]+$ ]]; then
+    hint="It holds the 64-character certificate fingerprint, not the key."
+  elif [ "${#b64}" -lt 200 ] && [ "${#pw}" -gt 1000 ]; then
+    hint="The two secrets look swapped: the key is in AUTOSKIP_KEYSTORE_PASSWORD."
+  elif [ "${#b64}" -lt 200 ]; then
+    hint="It is only ${#b64} characters long (the key is about 3,500), so it is probably the password or another short line from the file."
+  fi
+  fail "AUTOSKIP_KEYSTORE_BASE64 is not a valid key file. $hint Paste the long line between the BEGIN and END markers."
 fi
 
 actual="$(sed -n 's/^[[:space:]]*SHA256: //p' <<<"$listing" | head -1 | tr -d ':' | tr 'A-F' 'a-f')"
