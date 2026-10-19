@@ -1,12 +1,16 @@
 name: Release
 
-# Publishes a version on the Releases page when you push a tag such as v1.0.
+# Publishes a version on the Releases page. Start it either way:
+#   - on GitHub: Releases > Draft a new release > new tag such as v1.0 > Publish release
+#   - from a terminal: push a tag such as v1.0
 # The tag must match versionName in app/build.gradle.kts, and the APK must be signed with
-# the release key recorded in .github/release-cert-sha256, or nothing is published.
+# the release key recorded in .github/release-cert-sha256, or no APK is attached.
 
 on:
   push:
     tags: ['v*']
+  release:
+    types: [published]
 
 permissions:
   contents: write
@@ -97,7 +101,18 @@ jobs:
           NOTES
 
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # Made on the website (or by an earlier run): attach the files, and add the
+            # install and verification notes below anything already written there.
             gh release upload "$tag" "$apk" "$apk.sha256" --clobber --repo "$GITHUB_REPOSITORY"
+            body="$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
+            if ! grep -q "## Check it's genuine" <<<"$body"; then
+              if [ -n "$(tr -d '[:space:]' <<<"$body")" ]; then
+                printf '%s\n\n' "$body" | cat - notes.md > notes-combined.md
+              else
+                cp notes.md notes-combined.md
+              fi
+              gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --notes-file notes-combined.md
+            fi
           else
             gh release create "$tag" "$apk" "$apk.sha256" --repo "$GITHUB_REPOSITORY" \
               --title "AutoSkip $tag" --notes-file notes.md --verify-tag
