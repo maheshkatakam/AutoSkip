@@ -44,6 +44,7 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
     private var adActive = false
     private var adStartedAt = 0L
     private var adLastSeenAt = 0L
+    private var adOnScreen = false         // the last scan saw an ad
     private val presses = PressTracker()   // when to press, and when a press counts as a skip
     private var dumpedThisAd = false
 
@@ -55,7 +56,7 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
     override fun onCreate() {
         super.onCreate()
         prefs = Prefs(this)
-        muter = AdMuter(this, prefs)
+        muter = AdMuter(StreamMusicMute(this), prefs) { log(it) }
     }
 
     override fun onServiceConnected() {
@@ -90,7 +91,7 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
 
     override fun onSharedPreferenceChanged(sp: SharedPreferences?, key: String?) {
         if (key == Prefs.KEY_ENABLED || key == Prefs.KEY_MUTE || Prefs.isAppEnabledKey(key)) {
-            muter.update(adActive, SystemClock.uptimeMillis())
+            muter.update(adOnScreen, adActive, SystemClock.uptimeMillis())
             requestScan(0)
         }
     }
@@ -183,7 +184,8 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
         } else if (adActive && now - adLastSeenAt > AD_GONE_MS) {
             endAd(now)
         }
-        muter.update(adActive, now)
+        adOnScreen = adSeen
+        muter.update(adSeen, adActive, now)
 
         val busy = adActive || waiting || targetSeen
         requestScan(if (busy) FAST_POLL_MS else IDLE_POLL_MS)
@@ -192,8 +194,9 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
     private fun endAd(now: Long) {
         if (adActive) log("ad gone")
         adActive = false
+        adOnScreen = false
         presses.onAdEnded()?.let { credit(it, "ad ended") }
-        muter.update(false, now)
+        muter.update(false, false, now)
     }
 
     private fun credit(app: WatchedApp, why: String) {
@@ -290,7 +293,11 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
         }
 
         presses.onPressed(window.app, now, delivered = how != null)
-        if (how != null) log("pressed Skip in ${window.app.key} via $how (${r.match})")
+        if (how != null) {
+            log("pressed Skip in ${window.app.key} via $how (${r.match})")
+            // Unmute before the video starts: YouTube turns captions on for muted playback.
+            muter.onSkipPressed(now)
+        }
     }
 
     private fun isCoveredByAnotherWindow(x: Int, y: Int, mine: AppWindow, all: List<AnyWindow>): Boolean =

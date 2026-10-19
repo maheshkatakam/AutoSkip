@@ -7,7 +7,11 @@
 #   - what the fake app saw: every ad's Skip pressed, never during its countdown, and none
 #     of the traps pressed (advertiser link, Premium upsell, a "Skip" button with no ad);
 #   - what AutoSkip did: the presses it logged, and its saved skip counts (total and per
-#     app), which must go up by exactly the number of skips the fake app saw.
+#     app), which must go up by exactly the number of skips the fake app saw;
+#   - muting: in rounds with "Mute ads while they play" on, every ad (including one with no
+#     Skip button) must play muted, and the sound must be back 0.3 s after Skip and 0.7 s
+#     after an unskippable ad ends. The real YouTube turns captions on for muted playback,
+#     so a video that starts muted starts with captions. With muting off, nothing is muted.
 # Results and failure details are written as annotations on the workflow run.
 set -uo pipefail
 
@@ -20,7 +24,8 @@ YOUTUBE=com.google.android.youtube
 MUSIC=com.google.android.apps.youtube.music
 FAKE_ACTIVITY=io.github.autoskip.fake.FakePlayerActivity
 ADS_PER_ROUND=3
-ROUNDS=(youtube music youtube music)   # each app twice, so counting is tested across sessions
+# app:muting. Each app twice, with "Mute ads while they play" off and then on.
+ROUNDS=(youtube:off music:off youtube:on music:on)
 
 api="?"
 failed=0
@@ -92,10 +97,17 @@ fi
 
 # --- Play fake ads ----------------------------------------------------------------------
 round_no=0
-for app in "${ROUNDS[@]}"; do
+for spec in "${ROUNDS[@]}"; do
   round_no=$((round_no + 1))
+  app="${spec%%:*}"; mute="${spec#*:}"
   if [ "$app" = music ]; then pkg=$MUSIC; name="YouTube Music"; else pkg=$YOUTUBE; name="YouTube"; fi
-  label="Round $round_no ($name, $ADS_PER_ROUND ads)"
+  label="Round $round_no ($name, $ADS_PER_ROUND ads + 1 unskippable, muting $mute)"
+
+  # Switch "Mute ads while they play" (debug builds accept this from the test).
+  if [ "$mute" = on ]; then mute_flag=true; else mute_flag=false; fi
+  sh_ am start -W -n "$AUTOSKIP/.MainActivity" --ez test_mute_ads "$mute_flag" >/dev/null
+  sleep 1
+  sh_ input keyevent KEYCODE_HOME
   read -r before_total before_music <<<"$(saved_counts)"
 
   # A fresh ID per round: only a RESULT carrying it counts, so a leftover result from an
@@ -124,7 +136,7 @@ for app in "${ROUNDS[@]}"; do
     continue
   fi
 
-  field() { sed -n "s/.*$1=\([0-9]*\).*/\1/p" <<<"$result"; }
+  field() { sed -n "s/.* $1=\([0-9]*\).*/\1/p" <<<" $result"; }
   skipped="$(field skipped)"; wrong="$(field wrong)"; early="$(field early)"
   skipped="${skipped:-0}"
   expected_total=$((expected_total + skipped))
@@ -138,15 +150,30 @@ for app in "${ROUNDS[@]}"; do
   latencies="$(grep -o 'latency=[0-9]*ms' <<<"$events" | sed 's/latency=//' | paste -sd ' ' -)"
   summary="fake app: $result. AutoSkip: $presses presses logged, $counted_log skips counted in its log, saved count +$counted_saved (YouTube Music +$counted_music), now $after_total in total."
 
+  muted_ads="$(field muted_ads)"; late_unmute="$(field late_unmute)"
+  unskippable_muted="$(field unskippable_muted)"; unskippable_late="$(field unskippable_late)"
+  muted_normal="$(field muted_normal)"
+
   problems=""
   [ "$skipped" = "$ADS_PER_ROUND" ] || problems+=" Not every ad was skipped."
   [ "${wrong:-0}" = 0 ] || problems+=" A trap was pressed."
   [ "${early:-0}" = 0 ] || problems+=" Skip was pressed during a countdown."
   [ "$counted_saved" = "$skipped" ] || problems+=" The saved count went up by $counted_saved, not $skipped."
   [ "$counted_music" = "$want_music" ] || problems+=" The YouTube Music count went up by $counted_music, not $want_music."
+  [ "${muted_normal:-x}" = 0 ] || problems+=" The phone was muted during normal playback."
+  if [ "$mute" = on ]; then
+    [ "${muted_ads:-x}" = "$ADS_PER_ROUND" ] || problems+=" Only ${muted_ads:-?} of $ADS_PER_ROUND skippable ads played muted."
+    [ "${unskippable_muted:-x}" = 1 ] || problems+=" The unskippable ad wasn't muted."
+    [ "${late_unmute:-x}" = 0 ] || problems+=" After ${late_unmute:-?} skips the video started with the phone still muted (YouTube would turn captions on)."
+    [ "${unskippable_late:-x}" = 0 ] || problems+=" After the unskippable ad the video started with the phone still muted (YouTube would turn captions on)."
+    mute_summary="Every ad muted; sound back within 0.3 s of each Skip and 0.7 s after the unskippable ad."
+  else
+    [ "${muted_ads:-x}" = 0 ] && [ "${unskippable_muted:-x}" = 0 ] || problems+=" Ads were muted although muting is off."
+    mute_summary="Nothing muted, as expected with muting off."
+  fi
 
   if [ -z "$problems" ]; then
-    notice "$label: passed. Skip pressed after $latencies. $summary"
+    notice "$label: passed. Skip pressed after $latencies. $mute_summary $summary"
   else
     error "$label:$problems%0A$summary%0AFake app events:%0A$(echo "$events" | esc)AutoSkip log:%0A$(tail -n 60 <<<"$as_log" | esc)"
   fi

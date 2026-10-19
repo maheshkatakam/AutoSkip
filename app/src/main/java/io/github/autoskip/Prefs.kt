@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
 
 /** Settings and counters, shared by the screen and the accessibility service (same process). */
-class Prefs(context: Context) {
+class Prefs(context: Context) : MuteMemory {
 
     val sp: SharedPreferences =
         context.applicationContext.getSharedPreferences("autoskip", Context.MODE_PRIVATE)
@@ -68,11 +68,13 @@ class Prefs(context: Context) {
         edit.apply()
     }
 
+    override val muteEnabled: Boolean get() = muteAds && skipEnabled
+
     /**
      * True while this app is holding the media stream muted. Written to disk with commit()
      * so that if the process is killed mid-ad, the next start knows to unmute.
      */
-    var mutedByUs: Boolean
+    override var mutedByUs: Boolean
         get() = sp.getBoolean(KEY_MUTED_BY_US, false)
         set(v) {
             sp.edit().putBoolean(KEY_MUTED_BY_US, v).commit()

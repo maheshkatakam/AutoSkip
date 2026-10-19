@@ -1,81 +1,118 @@
 package io.github.autoskip
 
-import android.content.Context
-import android.media.AudioManager
-import android.util.Log
+/** The phone's media volume, as far as muting goes. [StreamMusicMute] is the real one. */
+interface MediaMute {
+    fun isMuted(): Boolean
+
+    /** Returns false if Android refused. */
+    fun setMuted(muted: Boolean): Boolean
+}
+
+/** What the muter needs to know and remember. [Prefs] is the real one. */
+interface MuteMemory {
+    /** "Mute ads while they play" is on, and skipping is switched on. */
+    val muteEnabled: Boolean
+
+    /** True while AutoSkip is holding the phone muted. Kept on disk so a restart can undo it. */
+    var mutedByUs: Boolean
+}
 
 /**
- * Mutes the media stream while an ad is on screen and puts it back afterwards.
+ * Mutes the phone's media volume while an ad is on screen and puts it back afterwards.
  *
- * It uses a real mute (ADJUST_MUTE), not "set volume to zero", so Android keeps your
- * volume level and unmuting restores exactly what you had. Every way out unmutes:
- * the ad ending, YouTube closing, the setting or the service being switched off, a
- * 3-minute ceiling on any single mute, and a process restart (the flag is on disk).
- * Pressing a volume key during an ad unmutes too, and the muter then leaves that ad alone.
+ * It uses a real mute, not "volume to zero", so Android keeps your volume level and
+ * unmuting restores exactly what you had.
+ *
+ * Unmuting happens as early as possible, because since 2026 YouTube turns captions on
+ * whenever the phone is muted (its "Show when muted" setting, on by default). A video that
+ * starts while the phone is still muted therefore starts with captions on. So AutoSkip
+ * unmutes the moment it presses Skip, and the moment no ad is on screen, rather than
+ * waiting for the ad to be confirmed over.
+ *
+ * Every way out unmutes: Skip pressed, the ad leaving the screen, the app closing, the
+ * setting or the service being switched off, a 3-minute ceiling on any single mute, and a
+ * restart (see [MuteMemory.mutedByUs]). If you press a volume key during an ad, it leaves
+ * that ad alone.
+ *
+ * No Android code here, so every rule is unit-tested (AdMuterTest).
  */
-class AdMuter(context: Context, private val prefs: Prefs) {
+class AdMuter(
+    private val media: MediaMute,
+    private val memory: MuteMemory,
+    private val log: (String) -> Unit = {},
+) {
+    private var mutedAt = NONE
+    private var skipPressedAt = NONE
 
-    private val audio: AudioManager? = context.getSystemService(AudioManager::class.java)
-    private var mutedAt = 0L
+    /** You unmuted this ad yourself (or the ceiling hit). Cleared when the ad is over. */
+    private var leftAlone = false
 
-    /** Set when you unmuted an ad yourself or the ceiling hit; cleared when the ad ends. */
-    private var holdOff = false
-
-    fun update(adActive: Boolean, now: Long) {
-        if (!prefs.muteAds || !prefs.skipEnabled) {
+    /**
+     * Called after every scan. [adOnScreen]: this scan saw an ad. [adActive]: an ad (or a run
+     * of back-to-back ads) is still considered under way, which outlasts a single scan.
+     */
+    fun update(adOnScreen: Boolean, adActive: Boolean, now: Long) {
+        if (!memory.muteEnabled) {
             release("setting off")
             return
         }
         if (!adActive) {
-            holdOff = false
-            release("ad ended")
+            leftAlone = false
+            skipPressedAt = NONE
+            release("ad over")
             return
         }
-        if (prefs.mutedByUs) {
-            if (!isMuted()) {
+        if (!adOnScreen) {
+            // The ad's controls are gone, so the video may be starting: give it its sound now.
+            release("no ad on screen")
+            return
+        }
+        if (skipPressedAt != NONE && now - skipPressedAt < REMUTE_AFTER_SKIP_MS) {
+            // Just pressed Skip. The ad's labels can linger a moment; don't mute the video.
+            return
+        }
+        if (memory.mutedByUs) {
+            if (!media.isMuted()) {
                 // You pressed a volume key during the ad. Respect that for the rest of it.
-                prefs.mutedByUs = false
-                holdOff = true
-                log("volume changed by user; leaving this ad alone")
-            } else if (now - mutedAt > MAX_MUTE_MS) {
+                memory.mutedByUs = false
+                mutedAt = NONE
+                leftAlone = true
+                log("volume changed by you; leaving this ad alone")
+            } else if (mutedAt != NONE && now - mutedAt > MAX_MUTE_MS) {
                 release("ceiling reached")
-                holdOff = true
+                leftAlone = true
             }
             return
         }
-        if (holdOff || isMuted()) return // already silent, or you chose to hear it
-        if (adjust(AudioManager.ADJUST_MUTE)) {
-            prefs.mutedByUs = true
+        if (leftAlone || media.isMuted()) return // you chose to hear it, or it's already silent
+        if (media.setMuted(true)) {
+            memory.mutedByUs = true
             mutedAt = now
             log("muted for ad")
         }
     }
 
-    /** Unmute if (and only if) this app was the one that muted. Safe to call any time. */
+    /** Skip was just pressed: unmute now, before the video starts. */
+    fun onSkipPressed(now: Long) {
+        skipPressedAt = now
+        release("skip pressed")
+    }
+
+    /** Unmute if (and only if) AutoSkip was the one that muted. Safe to call any time. */
     fun release(reason: String) {
-        if (!prefs.mutedByUs) return
-        if (isMuted()) adjust(AudioManager.ADJUST_UNMUTE)
-        prefs.mutedByUs = false
-        mutedAt = 0L
+        if (!memory.mutedByUs) return
+        if (media.isMuted()) media.setMuted(false)
+        memory.mutedByUs = false
+        mutedAt = NONE
         log("unmuted ($reason)")
     }
 
-    private fun isMuted(): Boolean = audio?.isStreamMute(AudioManager.STREAM_MUSIC) ?: false
-
-    private fun adjust(direction: Int): Boolean = try {
-        audio?.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, 0)
-        audio != null
-    } catch (e: SecurityException) {
-        Log.w(TAG, "could not change media volume", e)
-        false
-    }
-
-    private fun log(msg: String) {
-        if (prefs.verboseLogging) Log.d(TAG, msg)
-    }
-
     companion object {
-        private const val TAG = "AutoSkip"
-        private const val MAX_MUTE_MS = 3 * 60 * 1000L
+        const val MAX_MUTE_MS = 3 * 60 * 1000L
+
+        /** After pressing Skip, wait this long before muting again (the next ad in a run). */
+        const val REMUTE_AFTER_SKIP_MS = 1500L
+
+        private const val NONE = Long.MIN_VALUE
     }
 }

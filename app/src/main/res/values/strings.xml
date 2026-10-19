@@ -42,7 +42,7 @@
     </plurals>
     <string name="delay_description">Seconds to wait before pressing Skip</string>
     <string name="setting_mute">Mute ads while they play</string>
-    <string name="setting_mute_detail">Also silences ads that have no Skip button, such as audio ads in YouTube Music. Sound comes back when the ad ends, or press a volume key.</string>
+    <string name="setting_mute_detail">Also silences ads that have no Skip button, such as audio ads in YouTube Music. Sound comes back the moment Skip is pressed or the ad ends, or press a volume key. YouTube shows captions while your phone is muted; to stop that, turn off \"Show when muted\" in YouTube\'s caption settings.</string>
     <string name="setting_verbose">Debug logging</string>
     <string name="setting_verbose_detail">Writes what AutoSkip sees to logcat (tag AutoSkip). Use it to fix AutoSkip after a YouTube or YouTube Music update.</string>
 

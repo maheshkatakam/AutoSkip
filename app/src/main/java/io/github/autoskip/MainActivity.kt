@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -40,6 +41,7 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         prefs = Prefs(this)
+        applyTestSettings(intent)
 
         val root = findViewById<View>(R.id.root)
         applySystemBarPadding(root)
@@ -86,6 +88,22 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
 
         // Restricted settings only exist on Android 13 and later.
         restrictedHelp.visibility = if (Build.VERSION.SDK_INT >= 33) View.VISIBLE else View.GONE
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        applyTestSettings(intent)
+        findViewById<Switch>(R.id.switch_mute).isChecked = prefs.muteAds
+    }
+
+    /**
+     * Debug builds only: lets the emulator test (.github/scripts/e2e.sh) switch muting on and
+     * off with `am start ... --ez test_mute_ads true`. Release builds ignore it.
+     */
+    private fun applyTestSettings(intent: Intent?) {
+        val debuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (!debuggable || intent == null || !intent.hasExtra(EXTRA_TEST_MUTE_ADS)) return
+        prefs.muteAds = intent.getBooleanExtra(EXTRA_TEST_MUTE_ADS, false)
     }
 
     override fun onResume() {
@@ -261,4 +279,8 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
         insets.systemWindowInsetRight,
         insets.systemWindowInsetBottom,
     )
+
+    companion object {
+        private const val EXTRA_TEST_MUTE_ADS = "test_mute_ads"
+    }
 }

@@ -1,6 +1,7 @@
 package io.github.autoskip.fake
 
 import android.app.Activity
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -16,15 +17,20 @@ import android.widget.TextView
 import java.io.File
 
 /**
- * A fake player for the emulator test. It plays [ads] fake ads, then a stretch of normal
- * playback, and logs (tag AutoSkipTest) every press it receives:
+ * A fake player for the emulator test. It plays [ads] skippable ads, then one unskippable
+ * ad that ends on its own, then a stretch of normal playback, and records (tag AutoSkipTest,
+ * and files/events.log) everything that happens:
  *
  *   AD_SKIPPED n latency=…ms   Skip pressed after it became pressable (good)
  *   EARLY_PRESS n              Skip pressed during its countdown (bad)
  *   AD_NOT_SKIPPED n           nobody pressed Skip within 8 s (bad)
  *   WRONG_PRESS what           a trap was pressed: the advertiser link, a Premium upsell,
  *                              or a plain "Skip" button shown with no ad playing (bad)
- *   RESULT skipped=… expected=… wrong=… early=… missed=… token=…
+ *   AD_MUTED / AD_NOT_MUTED n  whether the phone was muted while the ad played
+ *   VIDEO_STARTED_MUTED n      the phone was still muted 0.3 s after Skip (bad when muting:
+ *                              the real YouTube turns captions on for muted playback)
+ *   RESULT skipped=… expected=… wrong=… early=… missed=… muted_ads=… late_unmute=…
+ *          unskippable_muted=… unskippable_late=… muted_normal=… token=…
  *
  * The "youtube" flavour mimics YouTube: view IDs (ad_progress_text, skip_ad_button) and a
  * countdown written inside the Skip button. The "music" flavour mimics what YouTube Music
@@ -36,6 +42,7 @@ class FakePlayerActivity : Activity() {
 
     private val handler = Handler(Looper.getMainLooper())
     private val musicStyle get() = packageName.endsWith(".music")
+    private val audio by lazy { getSystemService(AudioManager::class.java) }
 
     private var adsTotal = 3
     private var token = ""   // set by the test for each round, echoed in START and RESULT
@@ -44,6 +51,11 @@ class FakePlayerActivity : Activity() {
     private var wrong = 0
     private var early = 0
     private var missed = 0
+    private var mutedAds = 0
+    private var lateUnmute = 0
+    private var unskippableMuted = 0
+    private var unskippableLate = 0
+    private var mutedNormal = 0
     private var skipReady = false
     private var readyAt = 0L
     private var inAd = false
@@ -59,7 +71,7 @@ class FakePlayerActivity : Activity() {
     private val timeout = Runnable {
         missed++
         log("AD_NOT_SKIPPED $adIndex")
-        endAd()
+        endAd(skippedNow = false)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -82,7 +94,9 @@ class FakePlayerActivity : Activity() {
         super.onDestroy()
     }
 
-    // ---------------------------------------------------------------------------------
+    private fun phoneMuted(): Boolean = audio?.isStreamMute(AudioManager.STREAM_MUSIC) == true
+
+    // --- Skippable ads -------------------------------------------------------------------
 
     private fun startAd() {
         adIndex++
@@ -109,6 +123,13 @@ class FakePlayerActivity : Activity() {
             handler.postDelayed({ tick(left - 1) }, 1000)
             return
         }
+        // The ad has been playing for 3 s: if AutoSkip mutes ads, the phone is muted by now.
+        if (phoneMuted()) {
+            mutedAds++
+            log("AD_MUTED $adIndex")
+        } else {
+            log("AD_NOT_MUTED $adIndex")
+        }
         skipReady = true
         readyAt = SystemClock.uptimeMillis()
         if (musicStyle) {
@@ -134,33 +155,80 @@ class FakePlayerActivity : Activity() {
         }
         skipped++
         log("AD_SKIPPED $adIndex latency=${SystemClock.uptimeMillis() - readyAt}ms")
-        endAd()
+        endAd(skippedNow = true)
     }
 
-    private fun endAd() {
+    private fun endAd(skippedNow: Boolean) {
         handler.removeCallbacks(timeout)
         inAd = false
         skipReady = false
         adBox.visibility = View.GONE
         status.text = "Video playing"
+        val ad = adIndex
+        if (skippedNow) {
+            // The video is playing again. The real YouTube decides on captions about now.
+            handler.postDelayed({
+                if (phoneMuted()) {
+                    lateUnmute++
+                    log("VIDEO_STARTED_MUTED $ad")
+                } else {
+                    log("VIDEO_UNMUTED $ad")
+                }
+            }, UNMUTE_AFTER_SKIP_MS)
+        }
         handler.postDelayed({
-            if (adIndex < adsTotal) startAd() else startNormalPlayback()
+            if (adIndex < adsTotal) startAd() else startUnskippableAd()
         }, VIDEO_MS)
     }
+
+    // --- An ad with no Skip button, which simply ends (like many YouTube Music audio ads) --
+
+    private fun startUnskippableAd() {
+        inAd = true
+        status.text = "Unskippable ad"
+        adBox.visibility = View.VISIBLE
+        adLabel.text = if (musicStyle) "Your music will resume after this ad" else "Ad · 0:04"
+        skip.visibility = View.GONE
+        countdown.visibility = View.GONE
+        handler.postDelayed({
+            if (phoneMuted()) unskippableMuted = 1
+            log(if (unskippableMuted == 1) "UNSKIPPABLE_MUTED" else "UNSKIPPABLE_NOT_MUTED")
+        }, UNSKIPPABLE_MS / 2)
+        handler.postDelayed({ endUnskippableAd() }, UNSKIPPABLE_MS)
+    }
+
+    private fun endUnskippableAd() {
+        inAd = false
+        adBox.visibility = View.GONE
+        status.text = "Video playing"
+        handler.postDelayed({
+            if (phoneMuted()) unskippableLate = 1
+            log(if (unskippableLate == 1) "UNSKIPPABLE_VIDEO_STARTED_MUTED" else "UNSKIPPABLE_VIDEO_UNMUTED")
+        }, UNMUTE_AFTER_AD_END_MS)
+        handler.postDelayed({ startNormalPlayback() }, VIDEO_MS)
+    }
+
+    // --- Normal playback -------------------------------------------------------------------
 
     /** No ad on screen, but a song titled "Skip Ads (Remix)" and a plain Skip button. Nothing may be pressed. */
     private fun startNormalPlayback() {
         status.text = "Now playing"
         normalBox.visibility = View.VISIBLE
+        handler.postDelayed({ if (phoneMuted()) mutedNormal++ }, 1000)
         handler.postDelayed({ finishTest() }, NORMAL_MS)
     }
 
     private fun finishTest() {
         if (finished) return
         finished = true
+        if (phoneMuted()) mutedNormal++
         normalBox.visibility = View.GONE
         status.text = "Done"
-        log("RESULT skipped=$skipped expected=$adsTotal wrong=$wrong early=$early missed=$missed token=$token")
+        log(
+            "RESULT skipped=$skipped expected=$adsTotal wrong=$wrong early=$early missed=$missed " +
+                "muted_ads=$mutedAds late_unmute=$lateUnmute unskippable_muted=$unskippableMuted " +
+                "unskippable_late=$unskippableLate muted_normal=$mutedNormal token=$token",
+        )
     }
 
     // ---------------------------------------------------------------------------------
@@ -229,6 +297,13 @@ class FakePlayerActivity : Activity() {
         private const val COUNTDOWN_SECONDS = 3
         private const val SKIP_TIMEOUT_MS = 8000L
         private const val VIDEO_MS = 3000L
+        private const val UNSKIPPABLE_MS = 4000L
         private const val NORMAL_MS = 5000L
+
+        /** The phone must be unmuted this soon after Skip is pressed... */
+        private const val UNMUTE_AFTER_SKIP_MS = 300L
+
+        /** ...and this soon after an unskippable ad ends (AutoSkip has to notice it's gone). */
+        private const val UNMUTE_AFTER_AD_END_MS = 700L
     }
 }

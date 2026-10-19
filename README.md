@@ -3,7 +3,7 @@
 An Android app that presses the **Skip** button in the official **YouTube** and **YouTube Music** apps for you, as soon as the app shows it. It is the phone version of the idea behind the [YouTube Ad Auto-skipper](https://github.com/squgeim/yt-ad-autoskipper) browser extension: it does not block ads, it only presses the button the app already offers.
 
 - Presses **Skip** the moment it becomes pressable, or after a delay you choose (0 to 10 seconds).
-- Optionally **mutes** ads while they play, including ads that have no Skip button (such as audio ads in YouTube Music).
+- Optionally **mutes** ads while they play, including ads that have no Skip button (such as audio ads in YouTube Music), and unmutes the moment Skip is pressed or the ad ends.
 - Works in YouTube, YouTube Music or both: each has its own switch.
 - Counts how many ads it has skipped, per app.
 - Reads only those two apps, stores nothing it sees, and has **no internet permission**.
@@ -107,7 +107,8 @@ Every push runs three kinds of test on GitHub, and a red ❌ on a commit means o
 
 - **Detection rules** ([`SkipDetectorTest`](app/src/test/java/io/github/autoskip/SkipDetectorTest.kt)): fake screens, checking which button would be pressed, including every trap below.
 - **Pressing and counting** ([`PressTrackerTest`](app/src/test/java/io/github/autoskip/PressTrackerTest.kt)): scan-by-scan timelines checking when Skip is pressed and that each skipped ad is counted exactly once, including a button that disappears 0.3 s after the press (the case versions 1.0 and 1.1 got wrong, leaving the count at 0), flickers, retries and back-to-back ads.
-- **The real app on an emulator** ([`e2e.sh`](.github/scripts/e2e.sh)), on Android 11 and Android 16. Two small fake apps ([`fakeapps/`](fakeapps)) install under YouTube's and YouTube Music's package names and play fake ads: YouTube-style with view IDs and a countdown inside the button, YouTube Music-style with no IDs and "Your music will resume after this ad". Each app plays 3 ads, twice (12 ads per Android version). The test checks that every Skip was pressed, never during its countdown, that none of the traps was pressed ("Visit advertiser", "Skip ads with Premium", and a plain "Skip" button next to a song called "Skip Ads (Remix)" with no ad playing), and that AutoSkip's saved counts, total and YouTube Music, match the skips that happened. The results appear as notes on the workflow run.
+- **Muting** ([`AdMuterTest`](app/src/test/java/io/github/autoskip/AdMuterTest.kt)): when the phone is muted and unmuted, including that Skip unmutes at once, a run of ads stays muted, a volume key wins, and a phone you muted yourself is never unmuted.
+- **The real app on an emulator** ([`e2e.sh`](.github/scripts/e2e.sh)), on Android 11 and Android 16. Two small fake apps ([`fakeapps/`](fakeapps)) install under YouTube's and YouTube Music's package names and play fake ads: YouTube-style with view IDs and a countdown inside the button, YouTube Music-style with no IDs and "Your music will resume after this ad". Each app plays 3 skippable ads plus one unskippable ad, twice: once with **Mute ads while they play** off and once with it on. The test checks that every Skip was pressed, never during its countdown, that none of the traps was pressed ("Visit advertiser", "Skip ads with Premium", and a plain "Skip" button next to a song called "Skip Ads (Remix)" with no ad playing), that AutoSkip's saved counts, total and YouTube Music, match the skips that happened, and, with muting on, that every ad played muted and the sound was back within 0.3 s of each Skip and 0.7 s after the unskippable ad (so YouTube wouldn't start the video with captions). The results appear as notes on the workflow run.
 
 To run the unit tests yourself: `./gradlew :app:testDebugUnitTest`.
 
@@ -138,6 +139,7 @@ Some phones (Xiaomi, Samsung, OnePlus, Oppo, Vivo, and others) kill background a
 - **YouTube Music is less tested.** It shares YouTube's player, so the same rules should apply, but its ad wording is less documented. If an ad isn't skipped or muted there, turn on Debug logging and follow [When YouTube changes its UI](#when-youtube-changes-its-ui).
 - **Advanced Protection Mode (Android 17).** When that security mode is on, Android disables accessibility services that aren't declared assistive tools, which includes AutoSkip.
 - **Needs maintenance** after some app updates (see above).
+- **Captions and muting.** Since February 2026 YouTube turns captions on whenever your phone is muted (its **Show when muted** setting, on by default), and off again when the sound returns. With **Mute ads while they play** on, captions can therefore show during the ad. AutoSkip unmutes the instant it presses Skip, and as soon as an ad leaves the screen, so the video itself starts with sound. If captions still come on, turn off **Show when muted** in YouTube's caption settings. If they come on with AutoSkip's muting off, AutoSkip isn't involved: check YouTube's own caption settings (**Settings → Captions**) and Android's **Live Caption**.
 
 ---
 
