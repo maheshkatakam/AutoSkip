@@ -67,7 +67,7 @@ Installing this way (over USB/adb) avoids Android's "restricted settings" block,
 
 ### Option B: GitHub builds it for you
 
-Every push runs the **Build APK** workflow: unit tests, a build, and a check that the APK requests no permissions. Open the **Actions** tab, click the latest green run, and download **AutoSkip-apk**. On this repository the APK is signed with the release key, so it installs over an official release. Forks get a throwaway key instead.
+Every push runs the **Build APK** workflow: unit tests, a build, a check that the APK requests no permissions, and the [emulator test](#how-its-tested). Open the **Actions** tab, click the latest green run, and download **AutoSkip-apk**. On this repository the APK is signed with the release key, so it installs over an official release. Forks get a throwaway key instead.
 
 ### Option C: Command line
 
@@ -100,6 +100,16 @@ Without the release key (see [Maintainers](#maintainers)), `assembleRelease` sig
 Open YouTube or YouTube Music and play something until a skippable ad starts. When the Skip button appears it should be pressed within about a third of a second, and the count in AutoSkip goes up (it shows each app's count separately). Ads without a Skip button still play: turn on **Mute ads while they play** for those, which covers most YouTube Music audio ads.
 
 ---
+
+## How it's tested
+
+Every push runs three kinds of test on GitHub, and a red ❌ on a commit means one failed:
+
+- **Detection rules** ([`SkipDetectorTest`](app/src/test/java/io/github/autoskip/SkipDetectorTest.kt)): fake screens, checking which button would be pressed, including every trap below.
+- **Pressing and counting** ([`PressTrackerTest`](app/src/test/java/io/github/autoskip/PressTrackerTest.kt)): scan-by-scan timelines checking when Skip is pressed and that each skipped ad is counted exactly once, including a button that disappears 0.3 s after the press (the case versions 1.0 and 1.1 got wrong, leaving the count at 0), flickers, retries and back-to-back ads.
+- **The real app on an emulator** ([`e2e.sh`](.github/scripts/e2e.sh)), on Android 11 and Android 16. Two small fake apps ([`fakeapps/`](fakeapps)) install under YouTube's and YouTube Music's package names and play fake ads: YouTube-style with view IDs and a countdown inside the button, YouTube Music-style with no IDs and "Your music will resume after this ad". Each app plays 3 ads, twice (12 ads per Android version). The test checks that every Skip was pressed, never during its countdown, that none of the traps was pressed ("Visit advertiser", "Skip ads with Premium", and a plain "Skip" button next to a song called "Skip Ads (Remix)" with no ad playing), and that AutoSkip's saved counts, total and YouTube Music, match the skips that happened. The results appear as notes on the workflow run.
+
+To run the unit tests yourself: `./gradlew :app:testDebugUnitTest`.
 
 ## When YouTube changes its UI
 

@@ -2,12 +2,16 @@ package io.github.autoskip
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.content.pm.ApplicationInfo
 
 /** Settings and counters, shared by the screen and the accessibility service (same process). */
 class Prefs(context: Context) {
 
     val sp: SharedPreferences =
         context.applicationContext.getSharedPreferences("autoskip", Context.MODE_PRIVATE)
+
+    /** Debug builds (Android Studio, the emulator tests) log by default; releases don't. */
+    private val debuggable = (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
     /** Master switch. When off, the service stays enabled but does nothing. */
     var skipEnabled: Boolean
@@ -26,7 +30,7 @@ class Prefs(context: Context) {
 
     /** Write what the service sees to logcat (tag "AutoSkip"), for fixing it after YouTube updates. */
     var verboseLogging: Boolean
-        get() = sp.getBoolean(KEY_VERBOSE, false)
+        get() = sp.getBoolean(KEY_VERBOSE, debuggable)
         set(v) = sp.edit().putBoolean(KEY_VERBOSE, v).apply()
 
     /** Per-app switch, so you can use AutoSkip in YouTube only, YouTube Music only, or both. */

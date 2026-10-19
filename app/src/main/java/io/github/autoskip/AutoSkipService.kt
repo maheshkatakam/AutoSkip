@@ -44,10 +44,7 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
     private var adActive = false
     private var adStartedAt = 0L
     private var adLastSeenAt = 0L
-    private var readySince = 0L
-    private var cooldownUntil = 0L
-    private var attempts = 0
-    private var pressedIn: WatchedApp? = null   // set after a press, until the button goes away
+    private val presses = PressTracker()   // when to press, and when a press counts as a skip
     private var dumpedThisAd = false
 
     private val rect = Rect()
@@ -171,15 +168,8 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
         }
 
         if (!targetSeen) {
-            // The control is gone: either our press worked, or the ad ended on its own.
-            val app = pressedIn
-            if (app != null && now >= cooldownUntil) {
-                prefs.recordSkip(app, System.currentTimeMillis())
-                log("skip confirmed in ${app.key} (button gone)")
-            }
-            pressedIn = null
-            readySince = 0L
-            attempts = 0
+            // The control is gone. If we pressed it and it stays gone, that's a skipped ad.
+            presses.onTargetAbsent(now)?.let { credit(it, "button gone") }
         }
 
         if (adSeen) {
@@ -202,10 +192,13 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
     private fun endAd(now: Long) {
         if (adActive) log("ad gone")
         adActive = false
-        readySince = 0L
-        attempts = 0
-        pressedIn = null
+        presses.onAdEnded()?.let { credit(it, "ad ended") }
         muter.update(false, now)
+    }
+
+    private fun credit(app: WatchedApp, why: String) {
+        prefs.recordSkip(app, System.currentTimeMillis())
+        log("skip counted in ${app.key} ($why); total ${prefs.skippedCount}")
     }
 
     /** The on-screen windows of the watched apps that are switched on, plus every window's position. */
@@ -272,13 +265,7 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
         window: AppWindow,
         allWindows: List<AnyWindow>,
     ) {
-        if (now < cooldownUntil || attempts >= MAX_ATTEMPTS) return
-
-        if (readySince == 0L) {
-            readySince = now
-            log("Skip is ready in ${window.app.key} (${r.match}); delay ${prefs.delaySeconds}s")
-        }
-        if (now - readySince < prefs.delaySeconds * 1000L) return
+        if (!presses.onTargetVisible(now, prefs.delaySeconds * 1000L)) return
 
         val target = nodes[r.target!!]
         val label = nodes[r.label!!]
@@ -302,13 +289,8 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
             }
         }
 
-        attempts++
-        cooldownUntil = now + COOLDOWN_MS
-        readySince = 0L
-        if (how != null) {
-            pressedIn = window.app
-            log("pressed Skip in ${window.app.key} via $how (attempt $attempts)")
-        }
+        presses.onPressed(window.app, now, delivered = how != null)
+        if (how != null) log("pressed Skip in ${window.app.key} via $how (${r.match})")
     }
 
     private fun isCoveredByAnotherWindow(x: Int, y: Int, mine: AppWindow, all: List<AnyWindow>): Boolean =
@@ -359,8 +341,6 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
         private const val FAST_POLL_MS = 300L
         private const val IDLE_POLL_MS = 1000L
         private const val AD_GONE_MS = 1200L
-        private const val COOLDOWN_MS = 1500L
-        private const val MAX_ATTEMPTS = 4
         private const val TAP_DURATION_MS = 60L
         private const val DUMP_AFTER_MS = 6000L
         private const val MAX_NODES = 3000

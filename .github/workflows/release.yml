@@ -45,7 +45,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
 
       - name: Unit tests
-        run: ./gradlew testDebugUnitTest --no-daemon
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
 
       - name: Load the release key
         env:
@@ -54,7 +54,7 @@ jobs:
         run: .github/scripts/load-release-key.sh
 
       - name: Build signed APK
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew :app:assembleRelease --no-daemon
 
       - name: Remove the key file
         if: always()

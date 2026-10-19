@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The same view ID names YouTube's player uses, so AutoSkip's ID rules are exercised. -->
+<resources>
+    <item name="skip_ad_button" type="id" />
+    <item name="ad_progress_text" type="id" />
+</resources>

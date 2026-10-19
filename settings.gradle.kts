@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "AutoSkip"
 include(":app")
+include(":fakeapps")   // test-only fake YouTube / YouTube Music apps for the emulator test
