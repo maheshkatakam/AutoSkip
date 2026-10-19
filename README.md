@@ -13,21 +13,143 @@ Works on Android 8.0 and later. Built for Android 16 (API 36).
 
 ---
 
-## Download
+## Install guide
 
-Get the latest **AutoSkip-v….apk** from the [Releases page](../../releases/latest), open it on your phone, then follow [Install](#2-install-the-apk) and [Turn it on](#3-turn-it-on) below.
+It takes about five minutes. You need:
 
-Every official release is signed with the same key, so a new version installs over the old one and keeps your settings. To check a download is genuine, its signing certificate's SHA-256 fingerprint must be:
+- An Android phone running **Android 8.0 or later**.
+- The official **YouTube** and/or **YouTube Music** app.
+
+Menu names below are from Google Pixel phones; where Samsung or Xiaomi phones differ, it says so. If something on your screen doesn't match, see [Troubleshooting](#troubleshooting).
+
+### Step 1. Download the APK
+
+1. On your phone, open the [latest release](../../releases/latest).
+2. Under **Assets**, tap **AutoSkip-v1.1.apk** (the number is the version, so it may be higher). Pick the file ending in `.apk`, not `.apk.sha256`. It's about 700 KB.
+3. If your browser warns that this type of file can harm your device, tap **Download anyway**.
+
+### Step 2. Allow installing from your browser or Files app
+
+Android only installs apps from outside the Play Store if you allow the app you install from. You only do this once.
+
+1. Open the downloaded file: tap the download notification, or open the **Files** app → **Downloads** → **AutoSkip-v1.1.apk**.
+2. If Android says your phone isn't allowed to install unknown apps from this source, tap **Settings**, turn on **Allow from this source**, then go back.
+
+### Step 3. Install
+
+1. Tap **Install**.
+2. Google Play Protect or your phone maker may step in. What you see depends on your phone and country:
+   - **Play Protect offers to scan the app:** let it. If it then shows a warning, tap **More details** → **Install anyway**.
+   - **"App blocked to protect your device"**, with only an **OK** button: in India, Singapore, Thailand, Brazil and some other countries, Play Protect blocks every downloaded app that uses Accessibility, whatever the app does. Either [install from a computer](#install-from-a-computer-instead) (recommended), or turn off scanning for a moment: **Play Store → your profile picture → Play Protect → ⚙️ (top right) → Scan apps with Play Protect: off**, install AutoSkip, then turn it **back on** straight away.
+   - **Samsung, "Blocked by Auto Blocker":** **Settings → Security and privacy → Auto Blocker → off**, install AutoSkip, then turn Auto Blocker back on.
+   - **"Unverified developer":** Google is phasing in developer verification (from 30 September 2026 in Brazil, Indonesia, Singapore and Thailand, everywhere in 2027). [Installing from a computer](#install-from-a-computer-instead) isn't affected. Android also offers an "advanced flow" for unverified apps, with a one-time 24-hour wait.
+3. When it says **App installed**, tap **Open**.
+
+### Step 4. Open AutoSkip
+
+AutoSkip's screen shows a status card that says **Off**, and what AutoSkip can access: the screens of the YouTube and YouTube Music apps, nothing else, and it has no internet access. Below that:
+
+- **Skip ads automatically** is on.
+- Under **Use in**, both apps are switched on. One marked *(not installed)* isn't on your phone; that's fine.
+
+### Step 5. Turn AutoSkip on in Accessibility settings
+
+Android never lets an app switch this on for itself, so this one is up to you.
+
+1. In AutoSkip, tap **Open Accessibility settings**.
+2. Find AutoSkip in the list:
+   - Pixel and most phones: under **Downloaded apps**.
+   - Samsung: under **Installed apps**.
+   - Xiaomi, Redmi, POCO: under **Downloaded apps** (it's **Settings → Additional settings → Accessibility** if you go there yourself).
+3. Tap **AutoSkip** and turn on **Use AutoSkip** (on Samsung, the switch at the top).
+4. Android asks *"Allow AutoSkip to have full control of your device?"* (on Android 11 and older: *"Use AutoSkip?"*). Tap **Allow** (or **OK**). Every accessibility app gets this same warning. What AutoSkip does with it is set out in [Free, private and offline](#free-private-and-offline-and-checked-on-every-build).
+5. If there's also an **AutoSkip shortcut** switch, leave it off. You don't need it.
+
+**If the switch is greyed out, or you see "Restricted setting"** (Android 13 and later, for apps installed from a download):
+
+1. Tap **OK** on the "Restricted setting" message. Seeing it once is what makes the next option appear.
+2. Go back to AutoSkip and tap **Open App info** (or open **Settings → Apps → AutoSkip**).
+3. Tap **⋮** (top right) → **Allow restricted settings**, and confirm with your PIN, pattern or fingerprint. On Samsung, **Allow restricted settings** may be on the App info page itself: scroll down.
+4. Go back to Accessibility settings and turn AutoSkip on again (steps 1 to 4 above). This time it works.
+
+### Step 6. Let it run in the background
+
+Some phones close background apps to save battery, which quietly stops AutoSkip. To stop that:
+
+- **Pixel and most phones:** **Settings → Apps → AutoSkip → App battery usage → Unrestricted** (on some versions, turn on **Allow background usage** first).
+- **Samsung:** **Settings → Apps → AutoSkip → Battery → Unrestricted**. Also make sure AutoSkip isn't listed in **Settings → Battery → Background usage limits → Sleeping apps** or **Deep sleeping apps**.
+- **Xiaomi, Redmi, POCO:** **Settings → Apps → Manage apps → AutoSkip**: turn on **Autostart**, and set **Battery saver** (or **Battery**) to **No restrictions**.
+- **Other brands:** look yours up on [dontkillmyapp.com](https://dontkillmyapp.com).
+
+### Step 7. Check it works
+
+1. Open AutoSkip. The status says **On** and *"Watching YouTube and YouTube Music"*.
+2. Open YouTube or YouTube Music and play something until a skippable ad starts. When the Skip button appears, AutoSkip presses it within about a third of a second.
+3. Back in AutoSkip, the count under **Skipped** has gone up.
+
+You're done. The other settings are optional:
+
+- **Press Skip as soon as it appears:** drag the slider under it if you'd rather see a few seconds of each ad first.
+- **Mute ads while they play:** also silences ads that have no Skip button, such as YouTube Music's audio ads. YouTube shows captions while your phone is muted; if you'd rather it didn't, turn off **Show when muted** in YouTube's caption settings.
+- **Debug logging:** only needed when [fixing AutoSkip after a YouTube update](#when-youtube-changes-its-ui).
+
+### Updating to a new version
+
+Download the new APK from the [latest release](../../releases/latest) and open it, as in steps 1 and 2. Android asks whether you want to update the app: tap **Update**. The warnings from Step 3 may appear again. Your settings and counts are kept, and AutoSkip stays switched on. If its status says **Turned on, but not running** afterwards, turn it off and on again in Accessibility settings.
+
+### Uninstalling
+
+**Settings → Apps → AutoSkip → Uninstall.** AutoSkip has no account and stores nothing anywhere else, so nothing is left behind.
+
+### Install from a computer instead
+
+Use this if your phone blocks the download (Play Protect, Auto Blocker or "unverified developer"), or if you'd simply rather. Apps installed this way also skip the restricted-settings part of Step 5.
+
+1. On your computer (Windows, macOS or Linux), download Google's [SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools) and unzip them. Download the AutoSkip APK from the [latest release](../../releases/latest) into the unzipped `platform-tools` folder.
+2. On your phone, turn on Developer options: open **Settings → About phone** and tap **Build number** seven times, then enter your PIN if asked.
+   - Samsung: **Settings → About phone → Software information → Build number**.
+   - Xiaomi, Redmi, POCO: tap **OS version** (or **MIUI version**) instead.
+3. Turn on **USB debugging** in Developer options:
+   - Pixel and most phones: **Settings → System → Developer options**.
+   - Samsung: **Settings → Developer options**, at the bottom of the list.
+   - Xiaomi, Redmi, POCO: **Settings → Additional settings → Developer options**. Also turn on **Install via USB** there (it asks you to sign in to a Xiaomi account).
+4. Connect the phone with a USB cable. When it asks *"Allow USB debugging?"*, tap **Allow**.
+5. Open a terminal in the `platform-tools` folder (on Windows, type `cmd` in the folder's address bar and press Enter) and run:
+   ```bash
+   adb install AutoSkip-v1.1.apk
+   ```
+   Use the name of the file you downloaded if it's a newer version. On macOS, Linux or in Windows PowerShell, type `./adb` instead of `adb`. It prints **Success** when it's done.
+6. Carry on from [Step 4](#step-4-open-autoskip) on your phone. You can turn USB debugging off again afterwards.
+
+### Troubleshooting
+
+| What you see | What to do |
+| --- | --- |
+| *"App not installed as package conflicts with an existing package"* | The AutoSkip already on your phone was signed with a different key (an early test build, one from Android Studio, or a fork). Uninstall it, then install again. |
+| *"There was a problem parsing the package"* | Your phone runs Android 7 or older, which AutoSkip doesn't support. |
+| *"App blocked to protect your device"*, *"Blocked by Auto Blocker"* or *"unverified developer"* | See [Step 3](#step-3-install), or [install from a computer](#install-from-a-computer-instead). |
+| The AutoSkip switch in Accessibility is greyed out, or *"Restricted setting"* | Follow the restricted-settings steps in [Step 5](#step-5-turn-autoskip-on-in-accessibility-settings). |
+| No **Allow restricted settings** in the **⋮** menu | Try to turn AutoSkip on in Accessibility first and tap **OK** on the "Restricted setting" message: the option only appears after that. On Samsung, look on the App info page itself. If it still isn't there (some OnePlus phones), [install from a computer](#install-from-a-computer-instead), which doesn't need it. |
+| AutoSkip isn't in the Accessibility list | Check it's installed (**Settings → Apps**), then look under **Downloaded apps** or **Installed apps** rather than the main list. |
+| Status says **Turned on, but not running** | Android stopped it. Turn it off and on again in Accessibility settings, then do [Step 6](#step-6-let-it-run-in-the-background). Accessibility settings can still show it as on while it isn't running. |
+| Status says **On**, but ads aren't skipped | Check that **Skip ads automatically** and the app you're using (under **Use in**) are switched on, and that AutoSkip and YouTube are both up to date. If they are, YouTube may have changed its buttons: see [When YouTube changes its UI](#when-youtube-changes-its-ui), or open an issue on this repository. |
+| Captions turn on during ads | That's YouTube's **Show when muted** setting reacting to **Mute ads while they play**. Turn off one or the other. |
+
+### Check a download is genuine (optional)
+
+Every official release is signed with the same key, which is also what lets a new version install over the old one. To check a download really came from this repository, its signing certificate's SHA-256 fingerprint must be:
 
 ```
 c5e60d4195e3fd86e3c4f407ec998d184a478b935770e7add7552afb50afeb62
 ```
 
+On a computer with the Android SDK build tools:
+
 ```bash
 apksigner verify --print-certs AutoSkip-v1.1.apk   # "certificate SHA-256 digest" must match the line above
 ```
 
-`apksigner` comes with the Android SDK build tools. Builds from forks or from Android Studio are signed with a different key, so uninstall those before installing an official release.
+Each release also has the file's own SHA-256 checksum in **AutoSkip-v….apk.sha256**.
 
 ---
 
@@ -50,9 +172,36 @@ All the matching rules are in [`SkipDetector.kt`](app/src/main/java/io/github/au
 - A "Sponsored" label on its own is ignored, because promoted cards in the home feed, and YouTube Music's Now Playing banner, use it with no ad playing.
 - If the app ignores the press, it falls back to a tap at the button, but never if anything is drawn over the button (YouTube sometimes slides an install card over Skip).
 
+## Limitations
+
+- **Skippable ads only.** It presses the button the app shows you; it can't shorten ads that have none. Muting is the most an outside app can do about those. Many YouTube Music ads are unskippable audio ads.
+- **The official apps only:** YouTube (`com.google.android.youtube`) and YouTube Music (`com.google.android.apps.youtube.music`). Not YouTube in a browser or on TV.
+- **The app has to be on screen.** If YouTube Music plays an ad while it's in the background or the screen is off, there's no Skip button on screen to press, and nothing to detect for muting.
+- **YouTube Music is less tested.** It shares YouTube's player, so the same rules should apply, but its ad wording is less documented. If an ad isn't skipped or muted there, turn on Debug logging and follow [When YouTube changes its UI](#when-youtube-changes-its-ui).
+- **Advanced Protection Mode (Android 17).** When that security mode is on, Android disables accessibility services that aren't declared assistive tools, which includes AutoSkip.
+- **Needs maintenance** after some app updates (see [When YouTube changes its UI](#when-youtube-changes-its-ui)).
+- **Captions and muting.** Since February 2026 YouTube turns captions on whenever your phone is muted (its **Show when muted** setting, on by default), and off again when the sound returns. With **Mute ads while they play** on, captions can therefore show during the ad. AutoSkip unmutes the instant it presses Skip, and as soon as an ad leaves the screen, so the video itself starts with sound. If captions still come on, turn off **Show when muted** in YouTube's caption settings. If they come on with AutoSkip's muting off, AutoSkip isn't involved: check YouTube's own caption settings (**Settings → Captions**) and Android's **Live Caption**.
+
+## Free, private and offline, and checked on every build
+
+An accessibility service is powerful: it can read the screen. So AutoSkip makes these promises, and the build enforces the technical ones:
+
+- **No permissions at all, and never INTERNET.** Without the internet permission Android won't let the app open a network connection, so nothing it reads can leave the phone. [`verify-apk.sh`](.github/scripts/verify-apk.sh) inspects every APK the workflows build and fails the build if it requests *any* permission. A release can't be published without passing it.
+- **YouTube and YouTube Music only.** It receives events from those two apps only, and re-checks the app of every window before reading it.
+- **Keeps nothing.** It stores only its own settings and the skip counter.
+- **Free, with no ads, accounts, analytics or tracking.**
+
+If you fork this, keep it that way, and don't install builds of apps like this from people you don't trust. Check the [signing fingerprint](#check-a-download-is-genuine-optional).
+
+## Rules worth knowing
+
+- **YouTube's Terms of Service** forbid accessing the service "using any automated means" without permission. An app that presses Skip for you is automated interaction, even though it only presses a button you could press yourself. YouTube doesn't publish how (or whether) it enforces this against skip helpers, so use it knowing that. The fully sanctioned way to avoid ads is YouTube Premium.
+- **Google Play won't accept it.** Play's Device and Network Abuse policy prohibits apps that "interfere with another app displaying ads", and Play's Accessibility API policy limits how automation apps may use the API. It is distributed through this repository's Releases page instead.
+- **Licence.** MIT, see [LICENSE](LICENSE). The software comes with no warranty.
+
 ---
 
-## 1. Build the app yourself (optional)
+## Build the app yourself (optional)
 
 Only needed if you want to change the code. Otherwise use the [Releases page](../../releases/latest).
 
@@ -63,7 +212,7 @@ Only needed if you want to change the code. Otherwise use the [Releases page](..
 3. On your phone: **Settings → About phone →** tap **Build number** 7 times to unlock Developer options. Then **Settings → System → Developer options → USB debugging: on**.
 4. Plug the phone in, accept the "Allow USB debugging?" prompt, choose your phone in the device list at the top of Android Studio, and press **Run ▶**.
 
-Installing this way (over USB/adb) avoids Android's "restricted settings" block, described below. Android Studio signs with your computer's own debug key, so you'll need to uninstall that build before installing an official release, and the other way round.
+Installing this way (over USB/adb) avoids Android's [restricted settings](#step-5-turn-autoskip-on-in-accessibility-settings) block. Android Studio signs with your computer's own debug key, so you'll need to uninstall that build before installing an official release, and the other way round.
 
 ### Option B: GitHub builds it for you
 
@@ -80,26 +229,6 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
 Without the release key (see [Maintainers](#maintainers)), `:app:assembleRelease` signs with your local debug key. The `:app:` part skips the test-only fake apps in `fakeapps/`.
-
----
-
-## 2. Install the APK
-
-1. Open the APK on the phone and allow your browser or file manager to install unknown apps when asked.
-2. **Restricted settings (Android 13 and later).** Android blocks Accessibility for apps installed from a downloaded APK. If the AutoSkip switch is greyed out or you see "Restricted setting": open **Settings → Apps → AutoSkip**, tap **⋮** (top right) → **Allow restricted settings**, confirm with your PIN, then go back and turn it on. The app has a button that opens this screen.
-3. **Developer verification.** Google is rolling out a requirement that apps come from registered developers. From 30 September 2026 it applies in Brazil, Indonesia, Singapore and Thailand, with a global rollout planned for 2027. Installing with adb remains an official route for unverified apps. Otherwise Android offers an "advanced flow" for unverified apps in Developer options, with a one-time 24-hour wait.
-
-## 3. Turn it on
-
-1. Open **AutoSkip** and read what it accesses.
-2. Tap **Open Accessibility settings → Installed apps (or Downloaded apps) → AutoSkip → On**, and confirm. Android does not let any app turn this on for itself.
-3. Go back to AutoSkip. The status should say **On**.
-
-## 4. Test it
-
-Open YouTube or YouTube Music and play something until a skippable ad starts. When the Skip button appears it should be pressed within about a third of a second, and the count in AutoSkip goes up (it shows each app's count separately). Ads without a Skip button still play: turn on **Mute ads while they play** for those, which covers most YouTube Music audio ads.
-
----
 
 ## How it's tested
 
@@ -126,39 +255,6 @@ YouTube and YouTube Music rename buttons and view IDs between app versions, so e
 4. Add what you find to the lists at the top of `SkipDetector.kt`, add a test for it in `SkipDetectorTest.kt`, and run `./gradlew :app:testDebugUnitTest`.
 
 **Other languages.** View IDs work in any language. Labels are English only out of the box, so if your phone is set to Hindi, Spanish and so on, and the ID is missing on your device, add your language's wording for "Skip ad" and "Ad" to the lists.
-
-## Keeping it running
-
-Some phones (Xiaomi, Samsung, OnePlus, Oppo, Vivo, and others) kill background apps aggressively. If skipping works and then silently stops, the service was killed, and Accessibility settings may still show it as on (AutoSkip's status then says **Turned on, but not running**). Fixes: set AutoSkip's battery use to **Unrestricted**, allow auto-start if your phone has that option, and see [dontkillmyapp.com](https://dontkillmyapp.com) for your brand.
-
-## Limitations
-
-- **Skippable ads only.** It presses the button the app shows you; it can't shorten ads that have none. Muting is the most an outside app can do about those. Many YouTube Music ads are unskippable audio ads.
-- **The official apps only:** YouTube (`com.google.android.youtube`) and YouTube Music (`com.google.android.apps.youtube.music`). Not YouTube in a browser or on TV.
-- **The app has to be on screen.** If YouTube Music plays an ad while it's in the background or the screen is off, there's no Skip button on screen to press, and nothing to detect for muting.
-- **YouTube Music is less tested.** It shares YouTube's player, so the same rules should apply, but its ad wording is less documented. If an ad isn't skipped or muted there, turn on Debug logging and follow [When YouTube changes its UI](#when-youtube-changes-its-ui).
-- **Advanced Protection Mode (Android 17).** When that security mode is on, Android disables accessibility services that aren't declared assistive tools, which includes AutoSkip.
-- **Needs maintenance** after some app updates (see above).
-- **Captions and muting.** Since February 2026 YouTube turns captions on whenever your phone is muted (its **Show when muted** setting, on by default), and off again when the sound returns. With **Mute ads while they play** on, captions can therefore show during the ad. AutoSkip unmutes the instant it presses Skip, and as soon as an ad leaves the screen, so the video itself starts with sound. If captions still come on, turn off **Show when muted** in YouTube's caption settings. If they come on with AutoSkip's muting off, AutoSkip isn't involved: check YouTube's own caption settings (**Settings → Captions**) and Android's **Live Caption**.
-
----
-
-## Free, private and offline, and checked on every build
-
-An accessibility service is powerful: it can read the screen. So AutoSkip makes these promises, and the build enforces the technical ones:
-
-- **No permissions at all, and never INTERNET.** Without the internet permission Android won't let the app open a network connection, so nothing it reads can leave the phone. [`verify-apk.sh`](.github/scripts/verify-apk.sh) inspects every APK the workflows build and fails the build if it requests *any* permission. A release can't be published without passing it.
-- **YouTube and YouTube Music only.** It receives events from those two apps only, and re-checks the app of every window before reading it.
-- **Keeps nothing.** It stores only its own settings and the skip counter.
-- **Free, with no ads, accounts, analytics or tracking.**
-
-If you fork this, keep it that way, and don't install builds of apps like this from people you don't trust. Check the fingerprint above.
-
-## Rules worth knowing
-
-- **YouTube's Terms of Service** forbid accessing the service "using any automated means" without permission. An app that presses Skip for you is automated interaction, even though it only presses a button you could press yourself. YouTube doesn't publish how (or whether) it enforces this against skip helpers, so use it knowing that. The fully sanctioned way to avoid ads is YouTube Premium.
-- **Google Play won't accept it.** Play's Device and Network Abuse policy prohibits apps that "interfere with another app displaying ads", and Play's Accessibility API policy limits how automation apps may use the API. It is distributed through this repository's Releases page instead.
-- **Licence.** MIT, see [LICENSE](LICENSE). The software comes with no warranty.
 
 ---
 

@@ -74,10 +74,11 @@ jobs:
           ## Install
 
           1. Download **$apk** below and open it on your Android phone (Android 8.0 or later).
-          2. Android 13 and later: before turning AutoSkip on, open **Settings → Apps → AutoSkip → ⋮ → Allow restricted settings**.
-          3. Open AutoSkip and follow the steps to turn it on in Accessibility settings.
+          2. Open AutoSkip and turn it on in Accessibility settings.
 
-          Updating from an earlier release installs over it. If you installed a build from somewhere else (Android Studio, a fork), uninstall that first.
+          The [install guide](https://github.com/$GITHUB_REPOSITORY#install-guide) has every step, including what to do if your phone blocks the install or the Accessibility switch is greyed out.
+
+          Updating from an earlier release installs over it and keeps your settings. If you installed a build from somewhere else (Android Studio, a fork), uninstall that first.
 
           ## Check it's genuine
 
