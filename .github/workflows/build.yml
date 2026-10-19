@@ -41,13 +41,10 @@ jobs:
         if: env.HAS_RELEASE_KEY == 'true'
         env:
           KEYSTORE_BASE64: ${{ secrets.AUTOSKIP_KEYSTORE_BASE64 }}
-        run: |
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/autoskip-release.p12"
-          echo "AUTOSKIP_KEYSTORE=$RUNNER_TEMP/autoskip-release.p12" >> "$GITHUB_ENV"
+          KEYSTORE_PASSWORD: ${{ secrets.AUTOSKIP_KEYSTORE_PASSWORD }}
+        run: .github/scripts/load-release-key.sh
 
       - name: Build APK
-        env:
-          AUTOSKIP_KEYSTORE_PASSWORD: ${{ secrets.AUTOSKIP_KEYSTORE_PASSWORD }}
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Check permissions and signature
