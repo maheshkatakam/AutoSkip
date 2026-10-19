@@ -6,6 +6,7 @@ import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -29,9 +30,11 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
     private lateinit var statusDetail: TextView
     private lateinit var openSettings: Button
     private lateinit var restrictedHelp: View
-    private lateinit var youtubeMissing: View
+    private lateinit var appsMissing: View
     private lateinit var stats: TextView
+    private lateinit var statsBreakdown: TextView
     private lateinit var delayLabel: TextView
+    private lateinit var appSwitches: Map<WatchedApp, Switch>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,8 +48,9 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
         statusDetail = findViewById(R.id.status_detail)
         openSettings = findViewById(R.id.open_accessibility_settings)
         restrictedHelp = findViewById(R.id.restricted_help)
-        youtubeMissing = findViewById(R.id.youtube_missing)
+        appsMissing = findViewById(R.id.apps_missing)
         stats = findViewById(R.id.stats)
+        statsBreakdown = findViewById(R.id.stats_breakdown)
         delayLabel = findViewById(R.id.delay_label)
 
         openSettings.setOnClickListener { openAccessibilitySettings() }
@@ -54,6 +58,16 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
         findViewById<Button>(R.id.reset_stats).setOnClickListener { prefs.resetStats() }
 
         bindSwitch(R.id.switch_enabled, prefs.skipEnabled) { prefs.skipEnabled = it }
+        appSwitches = mapOf(
+            WatchedApp.YOUTUBE to findViewById(R.id.switch_app_youtube),
+            WatchedApp.YOUTUBE_MUSIC to findViewById(R.id.switch_app_youtube_music),
+        )
+        for ((app, s) in appSwitches) {
+            s.isChecked = prefs.isAppEnabled(app)
+            s.setOnCheckedChangeListener { _, checked -> prefs.setAppEnabled(app, checked) }
+        }
+
+        findViewById<TextView>(R.id.version).text = getString(R.string.version, versionName())
         bindSwitch(R.id.switch_mute, prefs.muteAds) { prefs.muteAds = it }
         bindSwitch(R.id.switch_verbose, prefs.verboseLogging) { prefs.verboseLogging = it }
 
@@ -86,7 +100,7 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
     }
 
     override fun onSharedPreferenceChanged(sp: SharedPreferences?, key: String?) {
-        if (key == Prefs.KEY_SKIPPED || key == Prefs.KEY_LAST_SKIP || key == null) refresh()
+        if (key == null || Prefs.isStatsKey(key) || Prefs.isAppEnabledKey(key)) refresh()
     }
 
     private fun refresh() {
@@ -95,7 +109,7 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
         when {
             running -> {
                 statusTitle.setText(R.string.status_on)
-                statusDetail.setText(R.string.status_on_detail)
+                statusDetail.text = runningDetail()
                 openSettings.setText(R.string.button_manage)
             }
             inSettings -> {
@@ -109,18 +123,45 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
                 openSettings.setText(R.string.button_open_settings)
             }
         }
-        youtubeMissing.visibility = if (isYouTubeInstalled()) View.GONE else View.VISIBLE
+        val installed = WatchedApp.entries.filter { isInstalled(it.packageName) }
+        appsMissing.visibility = if (installed.isEmpty()) View.VISIBLE else View.GONE
+        for ((app, s) in appSwitches) {
+            val name = getString(appName(app))
+            s.text = if (app in installed) name else getString(R.string.app_not_installed, name)
+        }
 
         val count = prefs.skippedCount
         val last = prefs.lastSkipAt
-        stats.text = if (count == 0 || last == 0L) {
-            getString(R.string.stats_none)
+        if (count == 0 || last == 0L) {
+            stats.text = getString(R.string.stats_none)
+            statsBreakdown.visibility = View.GONE
         } else {
             val ago = DateUtils.getRelativeTimeSpanString(
                 last, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
             )
-            resources.getQuantityString(R.plurals.stats_count, count, count, ago)
+            stats.text = resources.getQuantityString(R.plurals.stats_count, count, count, ago)
+            statsBreakdown.text = getString(
+                R.string.stats_breakdown,
+                prefs.skippedCount(WatchedApp.YOUTUBE),
+                prefs.skippedCount(WatchedApp.YOUTUBE_MUSIC),
+            )
+            statsBreakdown.visibility = View.VISIBLE
         }
+    }
+
+    /** "Watching YouTube and YouTube Music." or just the one that's switched on. */
+    private fun runningDetail(): String {
+        val on = WatchedApp.entries.filter { prefs.isAppEnabled(it) }
+        return when (on.size) {
+            0 -> getString(R.string.status_on_no_apps)
+            WatchedApp.entries.size -> getString(R.string.status_on_detail, getString(R.string.status_on_both))
+            else -> getString(R.string.status_on_detail, on.joinToString { getString(appName(it)) })
+        }
+    }
+
+    private fun appName(app: WatchedApp): Int = when (app) {
+        WatchedApp.YOUTUBE -> R.string.app_youtube
+        WatchedApp.YOUTUBE_MUSIC -> R.string.app_youtube_music
     }
 
     private fun updateDelayLabel(seconds: Int) {
@@ -163,17 +204,21 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
         return bound || AutoSkipService.isRunning
     }
 
-    private fun isYouTubeInstalled(): Boolean = try {
+    private fun packageInfo(name: String): PackageInfo? = try {
         if (Build.VERSION.SDK_INT >= 33) {
-            packageManager.getPackageInfo(AutoSkipService.YOUTUBE, PackageManager.PackageInfoFlags.of(0))
+            packageManager.getPackageInfo(name, PackageManager.PackageInfoFlags.of(0))
         } else {
             @Suppress("DEPRECATION")
-            packageManager.getPackageInfo(AutoSkipService.YOUTUBE, 0)
+            packageManager.getPackageInfo(name, 0)
         }
-        true
     } catch (e: PackageManager.NameNotFoundException) {
-        false
+        null
     }
+
+    /** Needs the package listed in <queries> in AndroidManifest.xml on Android 11 and later. */
+    private fun isInstalled(name: String): Boolean = packageInfo(name) != null
+
+    private fun versionName(): String = packageInfo(packageName)?.versionName ?: "?"
 
     private fun openAccessibilitySettings() {
         start(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))

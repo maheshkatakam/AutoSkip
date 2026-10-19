@@ -36,8 +36,9 @@ data class UiNode(
 )
 
 /**
- * Decides, from a snapshot of the YouTube app's screen, whether an ad is playing and
- * whether YouTube's own Skip control is on screen and ready to press.
+ * Decides, from a snapshot of the YouTube or YouTube Music app's screen, whether an ad is
+ * playing and whether the app's own Skip control is on screen and ready to press. Both apps
+ * share YouTube's video player, so one set of rules serves both.
  *
  * The rule this whole app is built around: only ever press the control YouTube itself
  * offers, and only once YouTube has made it pressable. Nothing here blocks, hides or
@@ -68,8 +69,11 @@ object SkipDetector {
 
     // ----- What the Skip control looks like ------------------------------------------
 
-    /** Any view ID containing this is part of YouTube's skip control. Language-independent. */
-    private const val SKIP_ID_FRAGMENT = "skip_ad"
+    /**
+     * Any view ID containing one of these is part of the skip control. Language-independent.
+     * YouTube and YouTube Music share the same video player, so both use skip_ad_button.
+     */
+    private val SKIP_ID_FRAGMENTS = listOf("skip_ad", "ad_skip")
 
     /** Words that may follow "skip" in an unambiguous label: "Skip ad", "Skip ads", "Skip advert". */
     private val AD_WORDS = setOf("ad", "ads", "advert", "adverts", "advertisement", "advertisements")
@@ -92,6 +96,12 @@ object SkipDetector {
     )
 
     /**
+     * "Video will play after ad", "Your music will resume after this ad", "Song will start
+     * after the ad"... anywhere in the label. YouTube Music words its countdown around music.
+     */
+    private val AFTER_AD = Regex("will (play|resume|continue|begin|start) after (this |the )?ad( |$)")
+
+    /**
      * Badge words that count only in a counter shape such as "Ad 1 of 2", "Ad · 0:15"
      * or "Sponsored · 0:16": the badge word followed by two or more numbers. A bare
      * "Sponsored" is deliberately not enough, because promoted cards in the home feed
@@ -110,6 +120,16 @@ object SkipDetector {
         "visit", "learn more", "install", "shop", "download", "get app", "get the app",
         "open app", "sign up", "book now", "apply now", "order now", "buy now", "call now",
         "my ad center", "why this ad",
+    )
+
+    /**
+     * Upsells. A button such as "Skip ads with Premium" or "Try ad-free" starts like a Skip
+     * label but opens a purchase screen. Any label containing one of these words is never
+     * pressed and never counts as proof that an ad is playing (so it can't trigger muting).
+     */
+    private val UPSELL_WORDS = listOf(
+        "premium", "ad free", "free trial", "trial", "subscribe", "subscription",
+        "upgrade", "membership", "member", "try it",
     )
 
     /** The Skip button is small. Refuse to press any container larger than this share of the window. */
@@ -152,19 +172,36 @@ object SkipDetector {
     fun isCountdown(label: String): Boolean =
         label.isNotEmpty() && (COUNTDOWN.containsMatchIn(label) || label.all { it.isDigit() || it == ' ' })
 
-    /** "skip ad", "skip ads", "skip advert"... as the first two words. */
-    fun isStrongSkipLabel(label: String): Boolean {
-        if (isCountdown(label)) return false
-        val words = label.split(' ')
-        return words.size >= 2 && words[0] == "skip" && words[1] in AD_WORDS
+    /** "Skip ads with Premium", "Try YouTube Music ad-free"... see [UPSELL_WORDS]. */
+    fun isUpsell(label: String): Boolean {
+        if (label.isEmpty()) return false
+        val padded = " $label "
+        return UPSELL_WORDS.any { padded.contains(" $it ") }
     }
 
+    fun isSkipViewId(id: String?): Boolean = id != null && SKIP_ID_FRAGMENTS.any { id.contains(it) }
+
+    /**
+     * "skip ad", "skip ads 1 of 2", "skip ad in 5": "skip", an ad word, then only numbers,
+     * "in" or "of". Anything else after it ("Skip Ads (Remix)", a song title) doesn't count.
+     */
+    private fun hasSkipAdShape(label: String): Boolean {
+        val words = label.split(' ')
+        if (words.size < 2 || words[0] != "skip" || words[1] !in AD_WORDS) return false
+        return words.drop(2).all { w -> w == "in" || w == "of" || w.all { it.isDigit() } }
+    }
+
+    /** A Skip label that is pressable now: the skip-ad shape, without a countdown. */
+    fun isStrongSkipLabel(label: String): Boolean =
+        !isCountdown(label) && !isUpsell(label) && hasSkipAdShape(label)
+
     fun isAdLabel(label: String): Boolean {
-        if (label.isEmpty()) return false
+        if (label.isEmpty() || isUpsell(label)) return false
         val words = label.split(' ')
         // "Skip ad", and the countdown before it ("Skip ad in 5"), both mean an ad is on screen.
-        if (words.size >= 2 && words[0] == "skip" && words[1] in AD_WORDS) return true
+        if (hasSkipAdShape(label)) return true
         if (AD_LABEL_PREFIXES.any { label.startsWith(it) }) return true
+        if (AFTER_AD.containsMatchIn(label)) return true
         // Counter shapes: "ad 1 of 2", "ad 0 15", "sponsored 0 16".
         if (words.size >= 3 && words[0] in BADGE_WORDS) {
             val rest = words.drop(1)
@@ -176,10 +213,13 @@ object SkipDetector {
 
     private fun isCta(label: String): Boolean = label.isNotEmpty() && CTA_PREFIXES.any { label.startsWith(it) }
 
+    /** An advertiser link or an upsell: pressing it would open the ad or a purchase screen. */
+    fun isNeverPress(label: String): Boolean = isCta(label) || isUpsell(label)
+
     private fun adSignal(n: UiNode): String? {
         if (!n.visible) return null
         val id = n.viewId
-        if (id != null && (id in AD_VIEW_IDS || id.contains(SKIP_ID_FRAGMENT))) return "id:$id"
+        if (id != null && (id in AD_VIEW_IDS || isSkipViewId(id))) return "id:$id"
         if (isAdLabel(n.text)) return "text:${n.text}"
         if (isAdLabel(n.desc)) return "desc:${n.desc}"
         return null
@@ -187,7 +227,7 @@ object SkipDetector {
 
     private fun skipMatch(n: UiNode, adContext: Boolean): Match? {
         if (!n.visible) return null
-        if (n.viewId?.contains(SKIP_ID_FRAGMENT) == true) return Match.VIEW_ID
+        if (isSkipViewId(n.viewId)) return Match.VIEW_ID
         if (isStrongSkipLabel(n.text) || isStrongSkipLabel(n.desc)) return Match.LABEL
         if (adContext && (n.text == GENERIC_SKIP || n.desc == GENERIC_SKIP)) return Match.GENERIC_LABEL
         return null
@@ -211,7 +251,7 @@ object SkipDetector {
     /**
      * Walks up from the node that identified the control to the nearest node that will
      * accept a press: visible, enabled, clickable, button-sized, and not wrapping an
-     * advertiser call to action.
+     * advertiser call to action or an upsell.
      */
     fun clickTarget(nodes: List<UiNode>, from: UiNode, window: Box): UiNode? {
         var node: UiNode? = from
@@ -219,7 +259,7 @@ object SkipDetector {
         while (node != null && hops <= MAX_ANCESTOR_HOPS) {
             if (!fitsButtonSize(node.bounds, window)) return null
             if (node.clickable && node.enabled && node.visible) {
-                return if (subtreeHas(nodes, node, ::isCta)) null else node
+                return if (subtreeHas(nodes, node, ::isNeverPress)) null else node
             }
             node = if (node.parent >= 0) nodes[node.parent] else null
             hops++

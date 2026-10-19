@@ -14,18 +14,18 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
 /**
- * Watches the YouTube app and presses its "Skip" button once YouTube shows it.
+ * Watches the YouTube and YouTube Music apps and presses their "Skip" button once it appears.
  *
  * How it works, in the same spirit as the YouTube Ad Auto-skipper browser extension:
- *  1. Android delivers this service events from the YouTube app only (see
- *     res/xml/autoskip_service.xml). Each event schedules a scan of YouTube's screen.
- *  2. A scan copies YouTube's accessibility tree into a flat list and asks
+ *  1. Android delivers this service events from those two apps only (see
+ *     res/xml/autoskip_service.xml). Each event schedules a scan of the app's screen.
+ *  2. A scan copies the app's accessibility tree into a flat list and asks
  *     [SkipDetector] whether an ad is on screen and whether the Skip control is ready.
  *  3. While an ad is on screen it rescans every 300 ms (the extension polls every
- *     200 ms); while YouTube is open with no ad it rescans once a second as a safety net;
- *     with YouTube closed it does nothing at all.
+ *     200 ms); while one of the apps is open with no ad it rescans once a second as a
+ *     safety net; with neither on screen it does nothing at all.
  *  4. When the control is ready (and any delay you chose has passed) it presses it with
- *     ACTION_CLICK, the same action TalkBack uses. Only if YouTube refuses that does it
+ *     ACTION_CLICK, the same action TalkBack uses. Only if the app refuses that does it
  *     fall back to a tap at the button, and never if something is drawn over the button.
  *
  * It has no INTERNET permission, so nothing it reads can leave the phone.
@@ -47,13 +47,13 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
     private var readySince = 0L
     private var cooldownUntil = 0L
     private var attempts = 0
-    private var awaitingConfirm = false
+    private var pressedIn: WatchedApp? = null   // set after a press, until the button goes away
     private var dumpedThisAd = false
 
     private val rect = Rect()
 
-    private class YtWindow(val root: AccessibilityNodeInfo, val box: Box, val layer: Int)
-    private class AnyWindow(val box: Box, val layer: Int, val isYouTube: Boolean)
+    private class AppWindow(val root: AccessibilityNodeInfo, val box: Box, val layer: Int, val app: WatchedApp)
+    private class AnyWindow(val box: Box, val layer: Int, val isWatchedApp: Boolean)
 
     override fun onCreate() {
         super.onCreate()
@@ -72,7 +72,8 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.packageName?.toString() != YOUTUBE) return
+        val app = WatchedApp.of(event?.packageName) ?: return
+        if (!prefs.isAppEnabled(app)) return
         requestScan(MIN_SCAN_GAP_MS)
     }
 
@@ -91,7 +92,7 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
     }
 
     override fun onSharedPreferenceChanged(sp: SharedPreferences?, key: String?) {
-        if (key == Prefs.KEY_ENABLED || key == Prefs.KEY_MUTE) {
+        if (key == Prefs.KEY_ENABLED || key == Prefs.KEY_MUTE || Prefs.isAppEnabledKey(key)) {
             muter.update(adActive, SystemClock.uptimeMillis())
             requestScan(0)
         }
@@ -132,14 +133,14 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
         }
 
         val allWindows = ArrayList<AnyWindow>()
-        val ytWindows = try {
-            findYouTubeWindows(allWindows)
+        val appWindows = try {
+            findAppWindows(allWindows)
         } catch (e: RuntimeException) {
             Log.w(TAG, "could not read windows", e)
             emptyList()
         }
-        if (ytWindows.isEmpty()) {
-            // YouTube isn't on screen. Its next event will wake us up again.
+        if (appWindows.isEmpty()) {
+            // Neither app is on screen (or both are switched off). Their next event wakes us.
             endAd(now)
             return
         }
@@ -147,7 +148,7 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
         var adSeen = false
         var waiting = false
         var targetSeen = false
-        for (w in ytWindows) {
+        for (w in appWindows) {
             val nodes = ArrayList<UiNode>(512)
             val handles = ArrayList<AccessibilityNodeInfo>(512)
             try {
@@ -165,17 +166,18 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
                 if (!targetSeen) tryPress(now, nodes, handles, r, w, allWindows)
                 targetSeen = true
             } else if (r.adOnScreen && !r.waiting) {
-                maybeDump(now, nodes, r)
+                maybeDump(now, w.app, nodes, r)
             }
         }
 
         if (!targetSeen) {
             // The control is gone: either our press worked, or the ad ended on its own.
-            if (awaitingConfirm && now >= cooldownUntil) {
-                prefs.recordSkip(System.currentTimeMillis())
-                log("skip confirmed (button gone)")
+            val app = pressedIn
+            if (app != null && now >= cooldownUntil) {
+                prefs.recordSkip(app, System.currentTimeMillis())
+                log("skip confirmed in ${app.key} (button gone)")
             }
-            awaitingConfirm = false
+            pressedIn = null
             readySince = 0L
             attempts = 0
         }
@@ -202,25 +204,28 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
         adActive = false
         readySince = 0L
         attempts = 0
-        awaitingConfirm = false
+        pressedIn = null
         muter.update(false, now)
     }
 
-    private fun findYouTubeWindows(all: MutableList<AnyWindow>): List<YtWindow> {
-        val result = ArrayList<YtWindow>(2)
+    /** The on-screen windows of the watched apps that are switched on, plus every window's position. */
+    private fun findAppWindows(all: MutableList<AnyWindow>): List<AppWindow> {
+        val result = ArrayList<AppWindow>(2)
         for (w in windows) {
             w.getBoundsInScreen(rect)
             val box = Box(rect.left, rect.top, rect.right, rect.bottom)
-            val ytRoot = w.root?.takeIf { it.packageName?.toString() == YOUTUBE }
-            all += AnyWindow(box, w.layer, ytRoot != null)
-            if (ytRoot != null) result += YtWindow(ytRoot, box, w.layer)
+            val root = w.root
+            val app = WatchedApp.of(root?.packageName)
+            all += AnyWindow(box, w.layer, app != null)
+            if (root != null && app != null && prefs.isAppEnabled(app)) result += AppWindow(root, box, w.layer, app)
         }
         if (result.isEmpty()) {
             // Some devices report no window list; fall back to the focused window.
             val root = rootInActiveWindow
-            if (root != null && root.packageName?.toString() == YOUTUBE) {
+            val app = WatchedApp.of(root?.packageName)
+            if (root != null && app != null && prefs.isAppEnabled(app)) {
                 root.getBoundsInScreen(rect)
-                result += YtWindow(root, Box(rect.left, rect.top, rect.right, rect.bottom), Int.MAX_VALUE)
+                result += AppWindow(root, Box(rect.left, rect.top, rect.right, rect.bottom), Int.MAX_VALUE, app)
             }
         }
         return result
@@ -264,14 +269,14 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
         nodes: List<UiNode>,
         handles: List<AccessibilityNodeInfo>,
         r: SkipDetector.Result,
-        window: YtWindow,
+        window: AppWindow,
         allWindows: List<AnyWindow>,
     ) {
         if (now < cooldownUntil || attempts >= MAX_ATTEMPTS) return
 
         if (readySince == 0L) {
             readySince = now
-            log("Skip is ready (${r.match}); delay ${prefs.delaySeconds}s")
+            log("Skip is ready in ${window.app.key} (${r.match}); delay ${prefs.delaySeconds}s")
         }
         if (now - readySince < prefs.delaySeconds * 1000L) return
 
@@ -301,13 +306,13 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
         cooldownUntil = now + COOLDOWN_MS
         readySince = 0L
         if (how != null) {
-            awaitingConfirm = true
-            log("pressed Skip via $how (attempt $attempts)")
+            pressedIn = window.app
+            log("pressed Skip in ${window.app.key} via $how (attempt $attempts)")
         }
     }
 
-    private fun isCoveredByAnotherWindow(x: Int, y: Int, mine: YtWindow, all: List<AnyWindow>): Boolean =
-        all.any { !it.isYouTube && it.layer > mine.layer && it.box.contains(x, y) }
+    private fun isCoveredByAnotherWindow(x: Int, y: Int, mine: AppWindow, all: List<AnyWindow>): Boolean =
+        all.any { !it.isWatchedApp && it.layer > mine.layer && it.box.contains(x, y) }
 
     private fun tap(x: Int, y: Int): Boolean {
         if (x < 0 || y < 0) return false
@@ -326,12 +331,12 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
     /**
      * With verbose logging on, if an ad has been on screen for a while and no Skip control
      * was recognised, write every labelled node to logcat once. That's the material you need
-     * to update SkipDetector after a YouTube update.
+     * to update SkipDetector after a YouTube or YouTube Music update.
      */
-    private fun maybeDump(now: Long, nodes: List<UiNode>, r: SkipDetector.Result) {
+    private fun maybeDump(now: Long, app: WatchedApp, nodes: List<UiNode>, r: SkipDetector.Result) {
         if (!prefs.verboseLogging || dumpedThisAd || !adActive || now - adStartedAt < DUMP_AFTER_MS) return
         dumpedThisAd = true
-        Log.d(TAG, "ad on screen (${r.adEvidence}) but no Skip control recognised. Labelled nodes:")
+        Log.d(TAG, "${app.key}: ad on screen (${r.adEvidence}) but no Skip control recognised. Labelled nodes:")
         for (n in nodes) {
             if (n.viewId == null && n.text.isEmpty() && n.desc.isEmpty()) continue
             Log.d(
@@ -343,7 +348,6 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
     }
 
     companion object {
-        const val YOUTUBE = "com.google.android.youtube"
         private const val TAG = "AutoSkip"
 
         /** Read by the app screen to tell "enabled" apart from "actually running". */

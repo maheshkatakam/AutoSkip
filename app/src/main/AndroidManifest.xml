@@ -7,9 +7,10 @@
         Accessibility plus internet is the shape of banking trojans; keep it that way.
     -->
 
-    <!-- Lets the app check that YouTube is installed (package visibility, Android 11+). -->
+    <!-- Lets the app check which of the two apps are installed (package visibility, Android 11+). -->
     <queries>
         <package android:name="com.google.android.youtube" />
+        <package android:name="com.google.android.apps.youtube.music" />
     </queries>
 
     <application

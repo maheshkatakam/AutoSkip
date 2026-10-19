@@ -1,11 +1,12 @@
 # AutoSkip for Android
 
-An Android app that presses the **Skip** button in the official YouTube app for you, as soon as YouTube shows it. It is the phone version of the idea behind the [YouTube Ad Auto-skipper](https://github.com/squgeim/yt-ad-autoskipper) browser extension: it does not block ads, it only presses the button YouTube already offers.
+An Android app that presses the **Skip** button in the official **YouTube** and **YouTube Music** apps for you, as soon as the app shows it. It is the phone version of the idea behind the [YouTube Ad Auto-skipper](https://github.com/squgeim/yt-ad-autoskipper) browser extension: it does not block ads, it only presses the button the app already offers.
 
 - Presses **Skip** the moment it becomes pressable, or after a delay you choose (0 to 10 seconds).
-- Optionally **mutes** ads while they play, including ads that have no Skip button.
-- Counts how many ads it has skipped.
-- Reads only the YouTube app, stores nothing it sees, and has **no internet permission**.
+- Optionally **mutes** ads while they play, including ads that have no Skip button (such as audio ads in YouTube Music).
+- Works in YouTube, YouTube Music or both: each has its own switch.
+- Counts how many ads it has skipped, per app.
+- Reads only those two apps, stores nothing it sees, and has **no internet permission**.
 - **Free**, with no ads and no tracking. Open source under the [MIT licence](LICENSE).
 
 Works on Android 8.0 and later. Built for Android 16 (API 36).
@@ -32,20 +33,22 @@ apksigner verify --print-certs AutoSkip-v1.0.apk   # "certificate SHA-256 digest
 
 ## How it works
 
-Android's **Accessibility API** lets an app read what is on screen in other apps and press buttons there. Screen readers such as TalkBack use it. AutoSkip uses it for one app (YouTube) and one button (Skip):
+Android's **Accessibility API** lets an app read what is on screen in other apps and press buttons there. Screen readers such as TalkBack use it. AutoSkip uses it for two apps (YouTube and YouTube Music) and one button (Skip). YouTube Music plays its ads in the same video player as YouTube, so one set of rules covers both:
 
-1. Android sends AutoSkip a notification whenever YouTube's screen changes.
-2. AutoSkip reads YouTube's screen as a tree of labelled elements and looks for an ad (`Sponsored · 0:16`, `Ad 1 of 2`, view IDs like `ad_progress_text`) and for the Skip control (view IDs containing `skip_ad`, or labels like "Skip ad" / "Skip").
+1. Android sends AutoSkip a notification whenever either app's screen changes.
+2. AutoSkip reads the app's screen as a tree of labelled elements and looks for an ad (`Sponsored · 0:16`, `Ad 1 of 2`, "Your music will resume after this ad", view IDs like `ad_progress_text`) and for the Skip control (view IDs containing `skip_ad`, or labels like "Skip ad" / "Skip").
 3. While the countdown is still running, it waits. Once the button is pressable, it presses it with `ACTION_CLICK`, the same action TalkBack uses.
-4. While an ad is on screen it re-checks every 300 ms; with YouTube open and no ad, once a second; with YouTube closed, never.
+4. While an ad is on screen it re-checks every 300 ms; with either app open and no ad, once a second; with neither on screen, never.
 
 All the matching rules are in [`SkipDetector.kt`](app/src/main/java/io/github/autoskip/SkipDetector.kt), which has no Android code and is covered by unit tests. Safety rules built in:
 
 - It never presses anything containing an advertiser link ("Visit advertiser", "Install", "Shop now"...). Pressing those would open the ad.
+- It never presses an upsell such as "Skip ads with Premium" or "Try it free", and those never count as an ad either, so they can't trigger muting.
 - It never presses a container bigger than a button.
-- A bare "Skip" label only counts while something else on screen proves an ad is playing, so a video titled "Skip" is safe.
-- A "Sponsored" label on its own is ignored, because promoted cards in the home feed use it with no ad playing.
-- If YouTube ignores the press, it falls back to a tap at the button, but never if anything is drawn over the button (YouTube sometimes slides an install card over Skip).
+- A bare "Skip" label only counts while something else on screen proves an ad is playing, so a video titled "Skip" is safe. A "Skip ad" label only counts if nothing but numbers follows it, so a song called "Skip Ads (Remix)" is safe too.
+- It never presses a disabled control. YouTube Music greys out its track buttons during ads.
+- A "Sponsored" label on its own is ignored, because promoted cards in the home feed, and YouTube Music's Now Playing banner, use it with no ad playing.
+- If the app ignores the press, it falls back to a tap at the button, but never if anything is drawn over the button (YouTube sometimes slides an install card over Skip).
 
 ---
 
@@ -89,18 +92,18 @@ Without the release key (see [Maintainers](#maintainers)), `assembleRelease` sig
 ## 3. Turn it on
 
 1. Open **AutoSkip** and read what it accesses.
-2. Tap **Open Accessibility settings → Installed apps (or Downloaded apps) → AutoSkip for YouTube → On**, and confirm. Android does not let any app turn this on for itself.
+2. Tap **Open Accessibility settings → Installed apps (or Downloaded apps) → AutoSkip → On**, and confirm. Android does not let any app turn this on for itself.
 3. Go back to AutoSkip. The status should say **On**.
 
 ## 4. Test it
 
-Open YouTube and play videos until a skippable ad starts. When the Skip button appears it should be pressed within about a third of a second, and the count in AutoSkip goes up. Ads without a Skip button still play (turn on **Mute ads while they play** for those).
+Open YouTube or YouTube Music and play something until a skippable ad starts. When the Skip button appears it should be pressed within about a third of a second, and the count in AutoSkip goes up (it shows each app's count separately). Ads without a Skip button still play: turn on **Mute ads while they play** for those, which covers most YouTube Music audio ads.
 
 ---
 
 ## When YouTube changes its UI
 
-YouTube renames buttons and view IDs between app versions, so expect to update the rules now and then. Here's the routine:
+YouTube and YouTube Music rename buttons and view IDs between app versions, so expect to update the rules now and then. Here's the routine (the same for both apps; log lines say which app they came from):
 
 1. In AutoSkip, turn on **Debug logging**.
 2. With the phone connected over USB, run `adb logcat -s AutoSkip`, then play videos until an ad appears. If an ad is on screen for 6 seconds with no Skip button recognised, AutoSkip prints every labelled element it sees once.
@@ -119,10 +122,12 @@ Some phones (Xiaomi, Samsung, OnePlus, Oppo, Vivo, and others) kill background a
 
 ## Limitations
 
-- **Skippable ads only.** It presses the button YouTube shows you; it can't shorten ads that have none. Muting is the most an outside app can do about those.
-- **Official YouTube app only** (`com.google.android.youtube`). Not YouTube in a browser, YouTube Music, or YouTube on TV.
+- **Skippable ads only.** It presses the button the app shows you; it can't shorten ads that have none. Muting is the most an outside app can do about those. Many YouTube Music ads are unskippable audio ads.
+- **The official apps only:** YouTube (`com.google.android.youtube`) and YouTube Music (`com.google.android.apps.youtube.music`). Not YouTube in a browser or on TV.
+- **The app has to be on screen.** If YouTube Music plays an ad while it's in the background or the screen is off, there's no Skip button on screen to press, and nothing to detect for muting.
+- **YouTube Music is less tested.** It shares YouTube's player, so the same rules should apply, but its ad wording is less documented. If an ad isn't skipped or muted there, turn on Debug logging and follow [When YouTube changes its UI](#when-youtube-changes-its-ui).
 - **Advanced Protection Mode (Android 17).** When that security mode is on, Android disables accessibility services that aren't declared assistive tools, which includes AutoSkip.
-- **Needs maintenance** after some YouTube updates (see above).
+- **Needs maintenance** after some app updates (see above).
 
 ---
 
@@ -131,7 +136,7 @@ Some phones (Xiaomi, Samsung, OnePlus, Oppo, Vivo, and others) kill background a
 An accessibility service is powerful: it can read the screen. So AutoSkip makes these promises, and the build enforces the technical ones:
 
 - **No permissions at all, and never INTERNET.** Without the internet permission Android won't let the app open a network connection, so nothing it reads can leave the phone. [`verify-apk.sh`](.github/scripts/verify-apk.sh) inspects every APK the workflows build and fails the build if it requests *any* permission. A release can't be published without passing it.
-- **YouTube only.** It receives events from YouTube only, and re-checks the app of every window before reading it.
+- **YouTube and YouTube Music only.** It receives events from those two apps only, and re-checks the app of every window before reading it.
 - **Keeps nothing.** It stores only its own settings and the skip counter.
 - **Free, with no ads, accounts, analytics or tracking.**
 
@@ -179,14 +184,13 @@ To build a signed APK on your own computer, decode the keystore to a file outsid
 ## Ideas for next steps
 
 - A Quick Settings tile to pause skipping.
-- YouTube Music support (it has its own Skip button and package name).
 - A Firefox for Android add-on for `m.youtube.com`, for people who watch in the browser.
 - A Safari Web Extension for iPhone (iOS doesn't let apps control the YouTube app, but Safari extensions can work on `m.youtube.com`).
 
 ## Credits
 
 - Idea: [squgeim/yt-ad-autoskipper](https://github.com/squgeim/yt-ad-autoskipper) (GPL-3.0). No code is copied from it.
-- YouTube view IDs (`skip_ad_button`, `ad_progress_text`, `player_learn_more_button`) and lessons about feed "Sponsored" cards were learned from [Javid-Git/ad-skipper](https://github.com/Javid-Git/ad-skipper) (MIT). The code here is written separately.
+- YouTube view IDs (`skip_ad_button`, `ad_progress_text`, `player_learn_more_button`) and lessons about feed "Sponsored" cards were learned from [Javid-Git/ad-skipper](https://github.com/Javid-Git/ad-skipper) (MIT). That YouTube Music uses the same `skip_ad_button` ID, and the `ad_skip_button` variant, come from [wolverinesingh1-droid/skipper-android](https://github.com/wolverinesingh1-droid/skipper-android) (MIT). The code here is written separately.
 - The Gradle wrapper (`gradlew`, `gradle/wrapper/`) is part of Gradle, Apache-2.0.
 
 Not affiliated with YouTube or Google. "YouTube" is a trademark of Google LLC.

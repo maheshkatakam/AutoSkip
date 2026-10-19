@@ -20,8 +20,8 @@ android {
         minSdk = 26          // Android 8.0
         targetSdk = 36       // Android 16
         // For a new release, raise both, then push a tag "v" + versionName (see README).
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
     }
 
     signingConfigs {

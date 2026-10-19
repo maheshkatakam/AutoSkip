@@ -226,4 +226,136 @@ class SkipDetectorTest {
         assertTrue(SkipDetector.isPointCovered(s.nodes, target, skipBox.centerX, skipBox.centerY))
         assertFalse(SkipDetector.isPointCovered(s.nodes, target, 100, 100))
     }
+
+    // ----- upsells (both apps) -------------------------------------------------------
+
+    @Test
+    fun upsellLabelsAreRecognised() {
+        assertTrue(SkipDetector.isUpsell("skip ads with premium"))
+        assertTrue(SkipDetector.isUpsell("listen ad free"))          // "ad-free" normalises to "ad free"
+        assertTrue(SkipDetector.isUpsell("start your free trial"))
+        assertFalse(SkipDetector.isUpsell("skip ad"))
+        assertFalse(SkipDetector.isStrongSkipLabel("skip ads with premium"))
+        assertFalse(SkipDetector.isAdLabel("skip ads with premium"))
+    }
+
+    @Test
+    fun neverPressesAPremiumUpsellThatStartsLikeSkip() {
+        val s = Screen()
+        val root = s.add(-1, box = window)
+        val button = s.add(root, clickable = true, box = Box(100, 1800, 600, 1900))
+        s.add(button, text = "Skip ads with Premium", box = Box(120, 1820, 580, 1880))
+
+        val r = SkipDetector.analyze(s.nodes, window)
+        assertFalse(r.adOnScreen)   // so it can't trigger muting either
+        assertNull(r.target)
+    }
+
+    @Test
+    fun neverPressesSkipButtonGroupedWithAnUpsell() {
+        val (s, p) = screenWithPlayer()
+        s.add(p, id = "ad_progress_text", text = "Ad · 0:12", box = Box(20, 540, 300, 580))
+        val group = s.add(p, clickable = true, box = skipBox)
+        s.add(group, text = "Skip", box = Box(820, 495, 900, 545))
+        s.add(group, text = "Try Premium", box = Box(900, 495, 1050, 545))
+
+        assertNull(SkipDetector.analyze(s.nodes, window).target)
+    }
+
+    // ----- YouTube Music -------------------------------------------------------------
+
+    /** Now Playing in YouTube Music: artwork on top, title, then the transport controls. */
+    private fun musicNowPlaying(): Pair<Screen, Int> {
+        val s = Screen()
+        val root = s.add(-1, box = window)
+        val art = s.add(root, id = "player_view", box = Box(60, 300, 1020, 1260))
+        s.add(root, text = "Some Song", box = Box(60, 1320, 900, 1400))
+        s.add(root, text = "Some Artist", box = Box(60, 1400, 900, 1460))
+        return s to art
+    }
+
+    @Test
+    fun musicCountdownWordingCountsAsAd() {
+        assertTrue(SkipDetector.isAdLabel("your music will resume after this ad"))
+        assertTrue(SkipDetector.isAdLabel("song will start after the ad"))
+        assertTrue(SkipDetector.isAdLabel("video will play after ad"))
+        assertFalse(SkipDetector.isAdLabel("we will play after advert break"))   // "advert" isn't "ad"
+        assertFalse(SkipDetector.isAdLabel("after ad hoc"))
+    }
+
+    @Test
+    fun pressesSkipOnAVideoAdInYouTubeMusic() {
+        val (s, art) = musicNowPlaying()
+        s.add(art, id = "ad_progress_text", text = "Ad · 0:21", box = Box(80, 1180, 400, 1240))
+        val button = s.add(art, id = "skip_ad_button", clickable = true, box = Box(760, 1100, 1000, 1180))
+        s.add(button, text = "Skip", box = Box(780, 1115, 980, 1165))
+
+        val r = SkipDetector.analyze(s.nodes, window)
+        assertEquals(button, r.target)
+        assertEquals(SkipDetector.Match.VIEW_ID, r.match)
+    }
+
+    @Test
+    fun alternativeSkipViewIdIsRecognised() {
+        val (s, art) = musicNowPlaying()
+        val button = s.add(art, id = "ad_skip_button", clickable = true, box = Box(760, 1100, 1000, 1180))
+
+        assertEquals(button, SkipDetector.analyze(s.nodes, window).target)
+    }
+
+    @Test
+    fun audioAdWithoutSkipButtonIsDetectedButNothingPressed() {
+        val (s, art) = musicNowPlaying()
+        s.add(art, text = "Your music will resume after this ad", box = Box(80, 1180, 1000, 1240))
+        s.add(0, desc = "Next", clickable = true, enabled = false, box = Box(700, 1900, 820, 2020))
+
+        val r = SkipDetector.analyze(s.nodes, window)
+        assertTrue(r.adOnScreen)    // muting can engage
+        assertNull(r.target)
+    }
+
+    @Test
+    fun disabledTrackSkipDuringAdIsNeverPressed() {
+        // During an ad YouTube Music greys out its track controls. Even if one were labelled
+        // "Skip", it is disabled, so it must not be chosen.
+        val (s, art) = musicNowPlaying()
+        s.add(art, id = "ad_progress_text", text = "Ad · 0:12", box = Box(80, 1180, 400, 1240))
+        s.add(0, desc = "Skip", clickable = true, enabled = false, box = Box(700, 1900, 820, 2020))
+
+        assertNull(SkipDetector.analyze(s.nodes, window).target)
+    }
+
+    @Test
+    fun nowPlayingSponsoredBannerIsNotAnAd() {
+        // YouTube Music can show a "Sponsored" banner on Now Playing while your music plays.
+        // It must not count as an ad (that would mute the music) and its button is never pressed.
+        val (s, _) = musicNowPlaying()
+        val banner = s.add(0, clickable = true, box = Box(60, 1480, 1020, 1640))
+        s.add(banner, text = "Sponsored", box = Box(80, 1500, 300, 1540))
+        s.add(banner, text = "Buy now", clickable = true, box = Box(800, 1520, 1000, 1600))
+
+        val r = SkipDetector.analyze(s.nodes, window)
+        assertFalse(r.adOnScreen)
+        assertNull(r.target)
+    }
+
+    @Test
+    fun songTitledSkipAdsIsNotPressed() {
+        // A full-width song row whose title happens to start with "Skip Ads".
+        val (s, _) = musicNowPlaying()
+        val row = s.add(0, clickable = true, box = Box(0, 1700, 1080, 1860))
+        s.add(row, text = "Skip Ads (Remix)", box = Box(200, 1720, 900, 1780))
+
+        val r = SkipDetector.analyze(s.nodes, window)
+        assertFalse(r.adOnScreen)   // so it doesn't mute the song
+        assertNull(r.target)
+    }
+
+    @Test
+    fun skipLabelShapes() {
+        assertTrue(SkipDetector.isStrongSkipLabel("skip ads 1 of 2"))
+        assertFalse(SkipDetector.isStrongSkipLabel("skip ads remix"))
+        assertFalse(SkipDetector.isAdLabel("skip ads remix"))
+        assertTrue(SkipDetector.isAdLabel("skip ads in 3"))
+    }
 }

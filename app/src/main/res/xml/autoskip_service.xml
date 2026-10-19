@@ -2,8 +2,8 @@
 <!--
     The accessibility service is scoped as tightly as Android allows.
 
-    packageNames         Events are delivered from the YouTube app only. The service also
-                         re-checks the package of every window before reading it.
+    packageNames         Events are delivered from YouTube and YouTube Music only. The service
+                         also re-checks the package of every window before reading it.
     flagReportViewIds    Fills in view IDs such as "skip_ad_button", the most stable,
                          language-independent way to find the control.
     flagIncludeNotImportantViews
@@ -28,5 +28,5 @@
     android:description="@string/service_description"
     android:isAccessibilityTool="false"
     android:notificationTimeout="100"
-    android:packageNames="com.google.android.youtube"
+    android:packageNames="com.google.android.youtube,com.google.android.apps.youtube.music"
     android:settingsActivity="io.github.autoskip.MainActivity" />
