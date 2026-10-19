@@ -22,6 +22,7 @@ pw="${KEYSTORE_PASSWORD:-}"
 b64="$(printf '%s' "$b64" | sed -E 's/-----(BEGIN|END)[^-]*-----//g' | tr -d '[:space:]')"
 pw="$(printf '%s' "$pw" | tr -d '[:space:]')"
 echo "::add-mask::$pw"
+[ -n "$b64" ] || fail "AUTOSKIP_KEYSTORE_BASE64 holds only the BEGIN/END marker lines or blank space. The long line of the key itself is missing: paste it as the secret's value."
 
 bad="$(printf '%s' "$b64" | tr -d 'A-Za-z0-9+/=' | wc -c | tr -d ' ')"
 if [ "$bad" -gt 0 ]; then
