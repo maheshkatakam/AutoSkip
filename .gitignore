@@ -11,3 +11,4 @@ captures/
 *.keystore
 *.p12
 *.pfx
+e2e-started.marker

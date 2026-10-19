@@ -53,6 +53,7 @@ saved_counts() {
 adb wait-for-device
 for _ in $(seq 1 90); do [ "$(sh_ getprop sys.boot_completed)" = 1 ] && break; sleep 2; done
 api="$(sh_ getprop ro.build.version.sdk)"
+touch "${GITHUB_WORKSPACE:-.}/e2e-started.marker"   # tells the workflow the emulator came up
 adb logcat -G 16M >/dev/null 2>&1 || true      # room for every line of every round
 sh_ svc power stayon true
 sh_ input keyevent KEYCODE_WAKEUP

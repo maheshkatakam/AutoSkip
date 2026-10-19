@@ -100,7 +100,12 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # The test script leaves e2e-started.marker once the emulator is up. If the first attempt
+      # fails without it, the emulator itself never started (a GitHub machine hiccup), so try
+      # once more. A failure after the test started is never retried.
       - name: Play fake ads and check what AutoSkip pressed and counted
+        id: e2e
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
@@ -115,3 +120,26 @@ jobs:
           disable-spellchecker: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: bash .github/scripts/e2e.sh
+
+      - name: Retry, because the emulator didn't start
+        if: steps.e2e.outcome == 'failure' && hashFiles('e2e-started.marker') == ''
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          # The plain Android image: no Google apps. Google's images ship a YouTube stub
+          # (so the fake YouTube can't install) and boot far slower on CI.
+          target: default
+          arch: x86_64
+          cores: 4
+          ram-size: 4096M
+          emulator-boot-timeout: 900
+          disable-animations: true
+          disable-spellchecker: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: bash .github/scripts/e2e.sh
+
+      - name: Fail, because the emulator test failed
+        if: steps.e2e.outcome == 'failure' && hashFiles('e2e-started.marker') != ''
+        run: |
+          echo "::error::The emulator test failed. See the notes above for which check."
+          exit 1
