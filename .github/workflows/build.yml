@@ -104,8 +104,13 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
-          target: google_apis
+          # The plain Android image: no Google apps. Google's images ship a YouTube stub
+          # (so the fake YouTube can't install) and boot far slower on CI.
+          target: default
           arch: x86_64
+          cores: 4
+          ram-size: 4096M
+          emulator-boot-timeout: 900
           disable-animations: true
           disable-spellchecker: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
