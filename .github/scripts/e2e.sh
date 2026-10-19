@@ -45,6 +45,12 @@ check_crashes() {
   if [ -n "$crashes" ]; then error "A crash was logged ($1):%0A$(echo "$crashes" | esc)"; fi
 }
 
+# One of AutoSkip's saved true/false settings, e.g. mute_ads.
+saved_setting() {
+  sh_ run-as "$AUTOSKIP" cat "/data/data/$AUTOSKIP/shared_prefs/autoskip.xml" 2>/dev/null \
+    | sed -n "s/.*name=\"$1\" value=\"\([a-z]*\)\".*/\1/p" | head -n 1
+}
+
 # AutoSkip's saved counts, as "total music".
 saved_counts() {
   local prefs total music
@@ -103,11 +109,17 @@ for spec in "${ROUNDS[@]}"; do
   if [ "$app" = music ]; then pkg=$MUSIC; name="YouTube Music"; else pkg=$YOUTUBE; name="YouTube"; fi
   label="Round $round_no ($name, $ADS_PER_ROUND ads + 1 unskippable, muting $mute)"
 
-  # Switch "Mute ads while they play" (debug builds accept this from the test).
+  # Switch "Mute ads while they play" (debug builds accept this from the test). The screen
+  # is opened fresh (clear-task): reopening an existing one would drop the setting.
   if [ "$mute" = on ]; then mute_flag=true; else mute_flag=false; fi
-  sh_ am start -W -n "$AUTOSKIP/.MainActivity" --ez test_mute_ads "$mute_flag" >/dev/null
+  sh_ am start -W --activity-clear-task -n "$AUTOSKIP/.MainActivity" --ez test_mute_ads "$mute_flag" >/dev/null
   sleep 1
   sh_ input keyevent KEYCODE_HOME
+  saved_mute="$(saved_setting mute_ads)"
+  if [ "${saved_mute:-false}" != "$mute_flag" ]; then
+    error "$label: couldn't switch muting $mute (AutoSkip's saved setting is '${saved_mute:-unset}')."
+    continue
+  fi
   read -r before_total before_music <<<"$(saved_counts)"
 
   # A fresh ID per round: only a RESULT carrying it counts, so a leftover result from an
