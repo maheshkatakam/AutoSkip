@@ -285,7 +285,7 @@ To build a signed APK on your own computer, decode the keystore to a file outsid
 
 ### Keeping the workflows safe
 
-On GitHub the key is only ever handed to the one build step that signs the APK ([`load-release-key.sh`](.github/scripts/load-release-key.sh)), and deleted straight after. Pull requests from forks never receive it. Every GitHub Action the workflows use is pinned to an exact commit, so a changed or compromised action can't quietly run next to the key; once a month Dependabot opens a pull request to update them, and it's safe to merge when its checks pass.
+On GitHub the key is only ever handed to the one build step that signs the APK ([`load-release-key.sh`](.github/scripts/load-release-key.sh)), and deleted straight after. Pull requests from forks never receive it. Every GitHub Action the workflows use is pinned to an exact commit, so a changed or compromised action can't quietly run next to the key; once a month Dependabot opens a pull request to update them, and it's safe to merge when its checks pass. The workflows use only open-source actions. Gradle's `setup-gradle` action is deliberately left out, because since version 6 its caching code is closed-source; `setup-java` caches Gradle's downloads instead, and Gradle's open-source `wrapper-validation` action checks `gradle-wrapper.jar`.
 
 ---
 
