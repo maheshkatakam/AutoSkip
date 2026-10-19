@@ -102,7 +102,8 @@ jobs:
 
       # The test script leaves e2e-started.marker once the emulator is up. If the first attempt
       # fails without it, the emulator itself never started (a GitHub machine hiccup), so try
-      # once more. A failure after the test started is never retried.
+      # once more; the retry's own result decides the job. A failure after the test started
+      # is never retried.
       - name: Play fake ads and check what AutoSkip pressed and counted
         id: e2e
         continue-on-error: true
@@ -121,8 +122,17 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: bash .github/scripts/e2e.sh
 
+      # Decided once, right after the first attempt: a retry leaves its own marker.
+      - name: Did the first attempt's emulator start?
+        id: started
+        if: steps.e2e.outcome == 'failure'
+        run: |
+          if [ -f e2e-started.marker ]; then started=true; else started=false; fi
+          echo "first_attempt=$started" >> "$GITHUB_OUTPUT"
+          echo "First attempt failed; its emulator started: $started"
+
       - name: Retry, because the emulator didn't start
-        if: steps.e2e.outcome == 'failure' && hashFiles('e2e-started.marker') == ''
+        if: steps.e2e.outcome == 'failure' && steps.started.outputs.first_attempt == 'false'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ matrix.api-level }}
@@ -139,7 +149,7 @@ jobs:
           script: bash .github/scripts/e2e.sh
 
       - name: Fail, because the emulator test failed
-        if: steps.e2e.outcome == 'failure' && hashFiles('e2e-started.marker') != ''
+        if: steps.e2e.outcome == 'failure' && steps.started.outputs.first_attempt == 'true'
         run: |
           echo "::error::The emulator test failed. See the notes above for which check."
           exit 1
