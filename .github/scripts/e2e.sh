@@ -185,7 +185,8 @@ for spec in "${ROUNDS[@]}"; do
   counted_music=$((after_music - before_music))
   want_music=0; [ "$app" = music ] && want_music=$skipped
   latencies="$(grep -v PROMPT <<<"$events" | grep -o 'latency=[0-9]*ms' | sed 's/latency=//' | paste -sd ' ' -)"
-  prompt_latency="$(grep PROMPT_ANSWERED <<<"$events" | grep -o 'latency=[0-9]*ms' | sed 's/latency=//' | tail -n 1)"
+  prompt_latency="$(grep PROMPT_ANSWERED <<<"$events" | grep -o 'latency=[0-9]*' | sed 's/latency=//' | tail -n 1)"
+  traps="$(grep -o 'TRAPS .*' <<<"$events" | tail -n 1)"
   answers_log="$(grep -c "answered the pause prompt" <<<"$as_log")"
   kept_log="$(grep -c "kept playing in" <<<"$as_log")"
   kept_saved=$((after_kept - before_kept))
@@ -218,6 +219,9 @@ for spec in "${ROUNDS[@]}"; do
   [ "$answered" = "$want_answered" ] || problems+=" The pause prompt was answered $answered times, wanted $want_answered (keep playing $keep)."
   [ "$answers_log" = "$want_answered" ] || problems+=" AutoSkip logged $answers_log answers to the pause prompt, wanted $want_answered."
   [ "$kept_saved" = "$want_answered" ] || problems+=" The saved keep-playing count went up by $kept_saved, not $want_answered."
+  # The poll and shelf traps only test something if they were on screen and the poll's list scrolls.
+  [ "$traps" = "TRAPS shelf_visible=true poll_visible=true poll_scrolls=true" ] ||
+    problems+=" The keep-playing traps weren't all on screen (${traps:-no TRAPS line}), so they tested nothing."
   if [ "$keep" = on ]; then
     keep_summary="Pause prompt answered after ${prompt_latency:-?}ms; its traps left alone."
   else

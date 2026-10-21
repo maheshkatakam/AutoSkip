@@ -83,6 +83,9 @@ class FakePlayerActivity : Activity() {
     private lateinit var countdown: TextView
     private lateinit var skip: Button
     private lateinit var normalBox: LinearLayout
+    private lateinit var shelfButton: Button
+    private lateinit var pollList: ScrollView
+    private lateinit var pollYes: Button
 
     private val timeout = Runnable {
         missed++
@@ -235,6 +238,13 @@ class FakePlayerActivity : Activity() {
         status.text = "Now playing"
         normalBox.visibility = View.VISIBLE
         handler.postDelayed({ if (phoneMuted()) mutedNormal++ }, 1000)
+        // The traps only prove something if they are really on screen, and the poll's list can scroll.
+        handler.postDelayed({
+            log(
+                "TRAPS shelf_visible=${onScreen(shelfButton)} poll_visible=${onScreen(pollYes)} " +
+                    "poll_scrolls=${pollList.canScrollVertically(1)}",
+            )
+        }, 500)
         handler.postDelayed({ if (phoneMuted()) mutedNormal++; showOtherDialog() }, NORMAL_MS)
     }
 
@@ -338,12 +348,15 @@ class FakePlayerActivity : Activity() {
         normalBox.addView(trap("Skip", "skip-with-no-ad"), lp())
         // The home tab's "Continue watching" shelf, which uses the prompt's words.
         normalBox.addView(TextView(this).apply { text = "Continue watching" }, lp())
-        normalBox.addView(trap("Continue", "continue-shelf"), lp())
+        shelfButton = trap("Continue", "continue-shelf")
+        normalBox.addView(shelfButton, lp())
         // A community-post poll in a scrolling list. Pressing "Yes" would vote.
         val list = ScrollView(this)
+        pollList = list
         val posts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         posts.addView(TextView(this).apply { text = "Are you still watching?" }, lp())
-        posts.addView(trap("Yes", "poll-yes"), lp())
+        pollYes = trap("Yes", "poll-yes")
+        posts.addView(pollYes, lp())
         posts.addView(trap("No", "poll-no"), lp())
         // Enough below the poll that the list can scroll, as a real feed always can.
         repeat(12) { i -> posts.addView(TextView(this).apply { text = "Video ${i + 1}"; textSize = 18f }, lp()) }
@@ -352,6 +365,8 @@ class FakePlayerActivity : Activity() {
         root.addView(normalBox, LinearLayout.LayoutParams(match, wrap))
         return root
     }
+
+    private fun onScreen(v: View): Boolean = v.isShown && v.getGlobalVisibleRect(android.graphics.Rect())
 
     private fun trap(label: String, what: String) = Button(this).apply {
         text = label
