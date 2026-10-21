@@ -72,6 +72,13 @@ class KeepPlayingDetectorTest {
     }
 
     @Test
+    fun youTubeMusicPromptAsSeenOnARealPhone() {
+        // October 2026, YouTube Music: "Video paused. Continue watching?" and a blue "Yes", nothing else.
+        val (s, b) = dialog(null, "Video paused. Continue watching?", "Yes")
+        assertEquals(b["Yes"], KeepPlayingDetector.find(s.nodes)?.target)
+    }
+
+    @Test
     fun pressesYesNotNoWhicheverComesFirst() {
         for (order in listOf(arrayOf("No", "Yes"), arrayOf("Yes", "No"))) {
             val (s, b) = dialog(null, "Video paused. Continue watching?", *order)

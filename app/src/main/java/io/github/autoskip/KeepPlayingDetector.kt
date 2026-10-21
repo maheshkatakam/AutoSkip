@@ -5,6 +5,10 @@ package io.github.autoskip
  * pauses playback ("Video paused. Continue watching?"), and the button that answers yes.
  * Pressing it is the "Keep playing when asked" setting, which is off unless you turn it on.
  *
+ * Seen on a real phone (October 2026): YouTube Music shows the same wording as YouTube,
+ * "Video paused. Continue watching?", with a blue "Yes". The other wordings below are
+ * variants YouTube has used or may use, kept so a rewording doesn't break this.
+ *
  * The rule: only press a yes-type button ("Yes", "Continue"...) that sits in the same small
  * dialog as wording that can only be this prompt. Like [SkipDetector], it has no Android code,
  * so every rule is covered by unit tests (KeepPlayingDetectorTest).

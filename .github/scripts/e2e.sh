@@ -12,8 +12,9 @@
 #     Skip button) must play muted, and the sound must be back 0.3 s after Skip and 0.7 s
 #     after an unskippable ad ends. The real YouTube turns captions on for muted playback,
 #     so a video that starts muted starts with captions. With muting off, nothing is muted.
-#   - "Keep playing when asked": every round ends with the pause prompt ("Video paused.
-#     Continue watching?", or "Music paused" / "Continue listening?"). With the setting on,
+#   - "Keep playing when asked": every round ends with the pause prompt, "Video paused.
+#     Continue watching?" (as YouTube Music showed it on a real phone, with a single "Yes";
+#     the fake YouTube adds a "No" as a trap). With the setting on,
 #     AutoSkip must press its "Yes" and count it once; with it off, it must leave it alone.
 #     Its traps (another Yes/No dialog, a poll asking "Are you still watching?" in a
 #     scrolling list, a "Continue watching" shelf, the prompt's own "No") must never be

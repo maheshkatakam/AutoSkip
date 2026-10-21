@@ -265,19 +265,17 @@ class FakePlayerActivity : Activity() {
     }
 
     /**
-     * The pause prompt. YouTube style: one message, "Video paused. Continue watching?".
-     * YouTube Music style: a "Music paused" title over "Continue listening?". Pressing "Yes"
-     * is what "Keep playing when asked" should do; the other button is a trap.
+     * The pause prompt, "Video paused. Continue watching?". YouTube Music style: exactly what
+     * it showed on a real phone in October 2026, the message and a single "Yes". YouTube
+     * style: the same message with a "No" next to "Yes" as a trap. Pressing "Yes" is what
+     * "Keep playing when asked" should do.
      */
     private fun showPrompt() {
         status.text = "Paused"
         val b = AlertDialog.Builder(this).setCancelable(false)
-        if (musicStyle) {
-            b.setTitle("Music paused").setMessage("Continue listening?")
-                .setNegativeButton("Not now") { _, _ -> wrong++; log("WRONG_PRESS prompt-not-now") }
-        } else {
-            b.setMessage("Video paused. Continue watching?")
-                .setNegativeButton("No") { _, _ -> wrong++; log("WRONG_PRESS prompt-no") }
+            .setMessage("Video paused. Continue watching?")
+        if (!musicStyle) {
+            b.setNegativeButton("No") { _, _ -> wrong++; log("WRONG_PRESS prompt-no") }
         }
         b.setPositiveButton("Yes") { _, _ ->
             if (!promptOpen) return@setPositiveButton
