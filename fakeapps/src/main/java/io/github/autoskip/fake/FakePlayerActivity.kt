@@ -1,6 +1,7 @@
 package io.github.autoskip.fake
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
@@ -13,13 +14,16 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import java.io.File
 
 /**
  * A fake player for the emulator test. It plays [ads] skippable ads, then one unskippable
- * ad that ends on its own, then a stretch of normal playback, and records (tag AutoSkipTest,
- * and files/events.log) everything that happens:
+ * ad that ends on its own, then a stretch of normal playback, then pauses and asks
+ * "Continue watching?", and records (tag AutoSkipTest, and files/events.log) everything that
+ * happens. With the extra prompt_only=true it skips the ads and goes straight to normal
+ * playback and the prompt.
  *
  *   AD_SKIPPED n latency=…ms   Skip pressed after it became pressable (good)
  *   EARLY_PRESS n              Skip pressed during its countdown (bad)
@@ -29,8 +33,16 @@ import java.io.File
  *   AD_MUTED / AD_NOT_MUTED n  whether the phone was muted while the ad played
  *   VIDEO_STARTED_MUTED n      the phone was still muted 0.3 s after Skip (bad when muting:
  *                              the real YouTube turns captions on for muted playback)
+ *   PROMPT_ANSWERED latency=…ms  "Yes" pressed on the pause prompt (good with "Keep playing
+ *                              when asked" on, bad with it off)
+ *   PROMPT_UNANSWERED          nobody pressed it within 4 s
  *   RESULT skipped=… expected=… wrong=… early=… missed=… muted_ads=… late_unmute=…
- *          unskippable_muted=… unskippable_late=… muted_normal=… token=…
+ *          unskippable_muted=… unskippable_late=… muted_normal=… answered=… token=…
+ *
+ * Traps for "Keep playing when asked", none of which may ever be pressed: a "Continue
+ * watching" shelf with a "Continue" button, a community-post poll in a scrolling list asking
+ * "Are you still watching?" with "Yes" and "No", a different dialog ("Remove from Watch
+ * later?") with "Yes" and "No", and the "No" on the prompt itself.
  *
  * The "youtube" flavour mimics YouTube: view IDs (ad_progress_text, skip_ad_button) and a
  * countdown written inside the Skip button. The "music" flavour mimics what YouTube Music
@@ -56,6 +68,10 @@ class FakePlayerActivity : Activity() {
     private var unskippableMuted = 0
     private var unskippableLate = 0
     private var mutedNormal = 0
+    private var promptOnly = false
+    private var answered = 0
+    private var promptShownAt = 0L
+    private var promptOpen = false
     private var skipReady = false
     private var readyAt = 0L
     private var inAd = false
@@ -81,12 +97,13 @@ class FakePlayerActivity : Activity() {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
         }
-        adsTotal = intent.getIntExtra("ads", 3)
+        promptOnly = intent.getBooleanExtra("prompt_only", false)
+        adsTotal = if (promptOnly) 0 else intent.getIntExtra("ads", 3)
         token = intent.getStringExtra("token") ?: "none"
         eventsFile.delete()
         setContentView(buildUi())
         log("START token=$token app=$packageName ads=$adsTotal style=${if (musicStyle) "music" else "youtube"}")
-        handler.postDelayed({ startAd() }, START_DELAY_MS)
+        handler.postDelayed({ if (promptOnly) startNormalPlayback() else startAd() }, START_DELAY_MS)
     }
 
     override fun onDestroy() {
@@ -210,24 +227,77 @@ class FakePlayerActivity : Activity() {
 
     // --- Normal playback -------------------------------------------------------------------
 
-    /** No ad on screen, but a song titled "Skip Ads (Remix)" and a plain Skip button. Nothing may be pressed. */
+    /**
+     * No ad on screen, but a song titled "Skip Ads (Remix)" and a plain Skip button, a
+     * "Continue watching" shelf, and a poll asking "Are you still watching?". Nothing may be pressed.
+     */
     private fun startNormalPlayback() {
         status.text = "Now playing"
         normalBox.visibility = View.VISIBLE
         handler.postDelayed({ if (phoneMuted()) mutedNormal++ }, 1000)
-        handler.postDelayed({ finishTest() }, NORMAL_MS)
+        handler.postDelayed({ if (phoneMuted()) mutedNormal++; showOtherDialog() }, NORMAL_MS)
+    }
+
+    // --- Dialogs -----------------------------------------------------------------------------
+
+    /** An ordinary Yes/No dialog that has nothing to do with the pause prompt. Must be left alone. */
+    private fun showOtherDialog() {
+        val d = AlertDialog.Builder(this)
+            .setMessage("Remove from Watch later?")
+            .setNegativeButton("No") { _, _ -> wrong++; log("WRONG_PRESS other-dialog-no") }
+            .setPositiveButton("Yes") { _, _ -> wrong++; log("WRONG_PRESS other-dialog-yes") }
+            .setCancelable(false)
+            .show()
+        handler.postDelayed({
+            if (d.isShowing) d.dismiss()
+            handler.postDelayed({ showPrompt() }, 500)
+        }, OTHER_DIALOG_MS)
+    }
+
+    /**
+     * The pause prompt. YouTube style: one message, "Video paused. Continue watching?".
+     * YouTube Music style: a "Music paused" title over "Continue listening?". Pressing "Yes"
+     * is what "Keep playing when asked" should do; the other button is a trap.
+     */
+    private fun showPrompt() {
+        status.text = "Paused"
+        val b = AlertDialog.Builder(this).setCancelable(false)
+        if (musicStyle) {
+            b.setTitle("Music paused").setMessage("Continue listening?")
+                .setNegativeButton("Not now") { _, _ -> wrong++; log("WRONG_PRESS prompt-not-now") }
+        } else {
+            b.setMessage("Video paused. Continue watching?")
+                .setNegativeButton("No") { _, _ -> wrong++; log("WRONG_PRESS prompt-no") }
+        }
+        b.setPositiveButton("Yes") { _, _ ->
+            if (!promptOpen) return@setPositiveButton
+            promptOpen = false
+            answered++
+            status.text = "Now playing"
+            log("PROMPT_ANSWERED latency=${SystemClock.uptimeMillis() - promptShownAt}ms")
+        }
+        val d = b.show()
+        promptOpen = true
+        promptShownAt = SystemClock.uptimeMillis()
+        handler.postDelayed({
+            if (promptOpen) {
+                promptOpen = false
+                log("PROMPT_UNANSWERED")
+                if (d.isShowing) d.dismiss()
+            }
+            handler.postDelayed({ finishTest() }, AFTER_PROMPT_MS)
+        }, PROMPT_WAIT_MS)
     }
 
     private fun finishTest() {
         if (finished) return
         finished = true
-        if (phoneMuted()) mutedNormal++
         normalBox.visibility = View.GONE
         status.text = "Done"
         log(
             "RESULT skipped=$skipped expected=$adsTotal wrong=$wrong early=$early missed=$missed " +
                 "muted_ads=$mutedAds late_unmute=$lateUnmute unskippable_muted=$unskippableMuted " +
-                "unskippable_late=$unskippableLate muted_normal=$mutedNormal token=$token",
+                "unskippable_late=$unskippableLate muted_normal=$mutedNormal answered=$answered token=$token",
         )
     }
 
@@ -266,6 +336,19 @@ class FakePlayerActivity : Activity() {
         normalBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
         normalBox.addView(TextView(this).apply { text = "Skip Ads (Remix)"; textSize = 18f }, lp())
         normalBox.addView(trap("Skip", "skip-with-no-ad"), lp())
+        // The home tab's "Continue watching" shelf, which uses the prompt's words.
+        normalBox.addView(TextView(this).apply { text = "Continue watching" }, lp())
+        normalBox.addView(trap("Continue", "continue-shelf"), lp())
+        // A community-post poll in a scrolling list. Pressing "Yes" would vote.
+        val list = ScrollView(this)
+        val posts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        posts.addView(TextView(this).apply { text = "Are you still watching?" }, lp())
+        posts.addView(trap("Yes", "poll-yes"), lp())
+        posts.addView(trap("No", "poll-no"), lp())
+        // Enough below the poll that the list can scroll, as a real feed always can.
+        repeat(12) { i -> posts.addView(TextView(this).apply { text = "Video ${i + 1}"; textSize = 18f }, lp()) }
+        list.addView(posts)
+        normalBox.addView(list, LinearLayout.LayoutParams(match, POLL_LIST_HEIGHT_PX))
         root.addView(normalBox, LinearLayout.LayoutParams(match, wrap))
         return root
     }
@@ -299,6 +382,10 @@ class FakePlayerActivity : Activity() {
         private const val VIDEO_MS = 3000L
         private const val UNSKIPPABLE_MS = 4000L
         private const val NORMAL_MS = 5000L
+        private const val OTHER_DIALOG_MS = 2500L
+        private const val PROMPT_WAIT_MS = 4000L
+        private const val AFTER_PROMPT_MS = 1500L
+        private const val POLL_LIST_HEIGHT_PX = 500
 
         /** The phone must be unmuted this soon after Skip is pressed... */
         private const val UNMUTE_AFTER_SKIP_MS = 300L

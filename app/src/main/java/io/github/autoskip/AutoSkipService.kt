@@ -27,6 +27,9 @@ import android.view.accessibility.AccessibilityNodeInfo
  *  4. When the control is ready (and any delay you chose has passed) it presses it with
  *     ACTION_CLICK, the same action TalkBack uses. Only if the app refuses that does it
  *     fall back to a tap at the button, and never if something is drawn over the button.
+ *  5. With "Keep playing when asked" on, the same scans look for the prompt that pauses
+ *     playback ("Video paused. Continue watching?", see [KeepPlayingDetector]) and press its
+ *     "Yes" the same way. This works even with "Skip ads automatically" off.
  *
  * It has no INTERNET permission, so nothing it reads can leave the phone.
  */
@@ -47,6 +50,11 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
     private var adOnScreen = false         // the last scan saw an ad
     private val presses = PressTracker()   // when to press, and when a press counts as a skip
     private var dumpedThisAd = false
+
+    // State for the "Continue watching?" prompt. The same press rules apply: press, wait,
+    // press again if it's still there, and count it once the prompt has gone.
+    private val promptPresses = PressTracker()
+    private var dumpedThisPrompt = false
 
     private val rect = Rect()
 
@@ -90,7 +98,9 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
     }
 
     override fun onSharedPreferenceChanged(sp: SharedPreferences?, key: String?) {
-        if (key == Prefs.KEY_ENABLED || key == Prefs.KEY_MUTE || Prefs.isAppEnabledKey(key)) {
+        if (key == Prefs.KEY_ENABLED || key == Prefs.KEY_MUTE || key == Prefs.KEY_KEEP_PLAYING ||
+            Prefs.isAppEnabledKey(key)
+        ) {
             muter.update(adOnScreen, adActive, SystemClock.uptimeMillis())
             requestScan(0)
         }
@@ -125,10 +135,11 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
         val now = SystemClock.uptimeMillis()
         lastScanAt = now
 
-        if (!prefs.skipEnabled) {
-            endAd(now)
-            return
-        }
+        val skipOn = prefs.skipEnabled
+        val keepOn = prefs.keepPlaying
+        if (!skipOn) endAd(now)
+        if (!keepOn) endPrompt()
+        if (!skipOn && !keepOn) return
 
         val allWindows = ArrayList<AnyWindow>()
         val appWindows = try {
@@ -140,12 +151,15 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
         if (appWindows.isEmpty()) {
             // Neither app is on screen (or both are switched off). Their next event wakes us.
             endAd(now)
+            endPrompt()
             return
         }
 
         var adSeen = false
         var waiting = false
         var targetSeen = false
+        var promptSeen = false
+        var promptWordingSeen = false
         for (w in appWindows) {
             val nodes = ArrayList<UiNode>(512)
             val handles = ArrayList<AccessibilityNodeInfo>(512)
@@ -157,38 +171,70 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
             }
             if (nodes.isEmpty()) continue
 
-            val r = SkipDetector.analyze(nodes, w.box)
-            if (r.adOnScreen) adSeen = true
-            if (r.waiting) waiting = true
-            if (r.target != null && r.label != null) {
-                if (!targetSeen) tryPress(now, nodes, handles, r, w, allWindows)
-                targetSeen = true
-            } else if (r.adOnScreen && !r.waiting) {
-                maybeDump(now, w.app, nodes, r)
+            if (skipOn) {
+                val r = SkipDetector.analyze(nodes, w.box)
+                if (r.adOnScreen) adSeen = true
+                if (r.waiting) waiting = true
+                if (r.target != null && r.label != null) {
+                    if (!targetSeen) tryPress(now, nodes, handles, r, w, allWindows)
+                    targetSeen = true
+                } else if (r.adOnScreen && !r.waiting) {
+                    maybeDump(now, w.app, nodes, r)
+                }
+            }
+
+            if (keepOn && !promptSeen) {
+                val k = KeepPlayingDetector.find(nodes)
+                if (k != null) {
+                    promptSeen = true
+                    tryAnswer(now, nodes, handles, k, w, allWindows)
+                } else if (KeepPlayingDetector.promptWording(nodes) != null) {
+                    promptWordingSeen = true
+                    maybeDumpPrompt(w.app, nodes)
+                }
             }
         }
 
-        if (!targetSeen) {
-            // The control is gone. If we pressed it and it stays gone, that's a skipped ad.
-            presses.onTargetAbsent(now)?.let { credit(it, "button gone") }
+        if (keepOn && !promptSeen) {
+            // The prompt is gone. If we answered it and it stays gone, playback carried on.
+            promptPresses.onTargetAbsent(now)?.let { creditKeptPlaying(it, "prompt gone") }
+            if (!promptWordingSeen) dumpedThisPrompt = false
         }
 
-        if (adSeen) {
-            adLastSeenAt = now
-            if (!adActive) {
-                adActive = true
-                adStartedAt = now
-                dumpedThisAd = false
-                log("ad on screen")
+        if (skipOn) {
+            if (!targetSeen) {
+                // The control is gone. If we pressed it and it stays gone, that's a skipped ad.
+                presses.onTargetAbsent(now)?.let { credit(it, "button gone") }
             }
-        } else if (adActive && now - adLastSeenAt > AD_GONE_MS) {
-            endAd(now)
-        }
-        adOnScreen = adSeen
-        muter.update(adSeen, adActive, now)
 
-        val busy = adActive || waiting || targetSeen
+            if (adSeen) {
+                adLastSeenAt = now
+                if (!adActive) {
+                    adActive = true
+                    adStartedAt = now
+                    dumpedThisAd = false
+                    log("ad on screen")
+                }
+            } else if (adActive && now - adLastSeenAt > AD_GONE_MS) {
+                endAd(now)
+            }
+            adOnScreen = adSeen
+            muter.update(adSeen, adActive, now)
+        }
+
+        val busy = adActive || waiting || targetSeen || promptSeen || promptPresses.pressPending
         requestScan(if (busy) FAST_POLL_MS else IDLE_POLL_MS)
+    }
+
+    /** The prompt can't be answered any more (setting off, or the app left the screen). */
+    private fun endPrompt() {
+        promptPresses.onAdEnded()?.let { creditKeptPlaying(it, "stopped watching") }
+        dumpedThisPrompt = false
+    }
+
+    private fun creditKeptPlaying(app: WatchedApp, why: String) {
+        prefs.recordKeptPlaying()
+        log("kept playing in ${app.key} ($why); total ${prefs.keptPlayingCount}")
     }
 
     private fun endAd(now: Long) {
@@ -247,6 +293,7 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
             enabled = node.isEnabled,
             visible = node.isVisibleToUser,
             bounds = Box(rect.left, rect.top, rect.right, rect.bottom),
+            scrollable = node.isScrollable,
         )
         out += ui
         handles += node
@@ -270,34 +317,63 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
     ) {
         if (!presses.onTargetVisible(now, prefs.delaySeconds * 1000L)) return
 
-        val target = nodes[r.target!!]
-        val label = nodes[r.label!!]
-        var how: String? = null
-
-        if (handles[target.index].performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
-            how = "ACTION_CLICK"
-        } else if (label.index != target.index &&
-            handles[label.index].performAction(AccessibilityNodeInfo.ACTION_CLICK)
-        ) {
-            how = "ACTION_CLICK on label"
-        } else {
-            val x = label.bounds.centerX
-            val y = label.bounds.centerY
-            val covered = SkipDetector.isPointCovered(nodes, target, x, y) ||
-                isCoveredByAnotherWindow(x, y, window, allWindows)
-            if (covered) {
-                log("not tapping: something is drawn over the Skip button")
-            } else if (tap(x, y)) {
-                how = "tap at $x,$y"
-            }
-        }
-
+        val how = press(nodes, handles, nodes[r.target!!], nodes[r.label!!], window, allWindows, "the Skip button")
         presses.onPressed(window.app, now, delivered = how != null)
         if (how != null) {
             log("pressed Skip in ${window.app.key} via $how (${r.match})")
             // Unmute before the video starts: YouTube turns captions on for muted playback.
             muter.onSkipPressed(now)
         }
+    }
+
+    /** Presses "Yes" on the "Continue watching?" prompt. */
+    private fun tryAnswer(
+        now: Long,
+        nodes: List<UiNode>,
+        handles: List<AccessibilityNodeInfo>,
+        k: KeepPlayingDetector.Result,
+        window: AppWindow,
+        allWindows: List<AnyWindow>,
+    ) {
+        if (!promptPresses.onTargetVisible(now, 0L)) return
+
+        val label = nodes[k.label]
+        val how = press(nodes, handles, nodes[k.target], label, window, allWindows, "the prompt's button")
+        promptPresses.onPressed(window.app, now, delivered = how != null)
+        if (how != null) {
+            val prompt = nodes[k.prompt].text.ifEmpty { nodes[k.prompt].desc }
+            val button = label.text.ifEmpty { label.desc }
+            log("answered the pause prompt '$prompt' in ${window.app.key}: pressed '$button' via $how")
+        }
+    }
+
+    /**
+     * Presses [target] with ACTION_CLICK, or its [label] if the target refuses. Only if both
+     * refuse does it tap at the label, and never if anything is drawn over that point.
+     * Returns how it pressed, or null if it couldn't.
+     */
+    private fun press(
+        nodes: List<UiNode>,
+        handles: List<AccessibilityNodeInfo>,
+        target: UiNode,
+        label: UiNode,
+        window: AppWindow,
+        allWindows: List<AnyWindow>,
+        what: String,
+    ): String? {
+        if (handles[target.index].performAction(AccessibilityNodeInfo.ACTION_CLICK)) return "ACTION_CLICK"
+        if (label.index != target.index && handles[label.index].performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+            return "ACTION_CLICK on label"
+        }
+        val x = label.bounds.centerX
+        val y = label.bounds.centerY
+        val covered = SkipDetector.isPointCovered(nodes, target, x, y) ||
+            isCoveredByAnotherWindow(x, y, window, allWindows)
+        if (covered) {
+            log("not tapping: something is drawn over $what")
+            return null
+        }
+        return if (tap(x, y)) "tap at $x,$y" else null
     }
 
     private fun isCoveredByAnotherWindow(x: Int, y: Int, mine: AppWindow, all: List<AnyWindow>): Boolean =
@@ -326,12 +402,29 @@ class AutoSkipService : AccessibilityService(), SharedPreferences.OnSharedPrefer
         if (!prefs.verboseLogging || dumpedThisAd || !adActive || now - adStartedAt < DUMP_AFTER_MS) return
         dumpedThisAd = true
         Log.d(TAG, "${app.key}: ad on screen (${r.adEvidence}) but no Skip control recognised. Labelled nodes:")
+        dumpNodes(nodes)
+    }
+
+    /**
+     * With verbose logging on, if the pause prompt's wording is on screen but no button we
+     * trust is next to it, write every labelled node to logcat once. That's what you need to
+     * update KeepPlayingDetector if YouTube rewords the prompt or its button.
+     */
+    private fun maybeDumpPrompt(app: WatchedApp, nodes: List<UiNode>) {
+        if (!prefs.verboseLogging || dumpedThisPrompt) return
+        dumpedThisPrompt = true
+        Log.d(TAG, "${app.key}: pause prompt on screen but no button recognised. Labelled nodes:")
+        dumpNodes(nodes)
+    }
+
+    private fun dumpNodes(nodes: List<UiNode>) {
         for (n in nodes) {
             if (n.viewId == null && n.text.isEmpty() && n.desc.isEmpty()) continue
             Log.d(
                 TAG,
                 "  #${n.index} id=${n.viewId} text='${n.text}' desc='${n.desc}' " +
-                    "click=${n.clickable} enabled=${n.enabled} visible=${n.visible} ${n.bounds}",
+                    "click=${n.clickable} enabled=${n.enabled} visible=${n.visible} " +
+                    "scroll=${n.scrollable} ${n.bounds}",
             )
         }
     }

@@ -28,6 +28,22 @@ class Prefs(context: Context) : MuteMemory {
         get() = sp.getBoolean(KEY_MUTE, false)
         set(v) = sp.edit().putBoolean(KEY_MUTE, v).apply()
 
+    /**
+     * Press "Yes" when YouTube or YouTube Music pauses and asks "Continue watching?".
+     * Off unless you turn it on: the prompt exists so nothing keeps playing to nobody.
+     * Independent of [skipEnabled].
+     */
+    var keepPlaying: Boolean
+        get() = sp.getBoolean(KEY_KEEP_PLAYING, false)
+        set(v) = sp.edit().putBoolean(KEY_KEEP_PLAYING, v).apply()
+
+    /** How many times AutoSkip answered that prompt, in either app. */
+    val keptPlayingCount: Int get() = sp.getInt(KEY_KEPT_PLAYING, 0)
+
+    fun recordKeptPlaying() {
+        sp.edit().putInt(KEY_KEPT_PLAYING, keptPlayingCount + 1).apply()
+    }
+
     /** Write what the service sees to logcat (tag "AutoSkip"), for fixing it after YouTube updates. */
     var verboseLogging: Boolean
         get() = sp.getBoolean(KEY_VERBOSE, debuggable)
@@ -63,7 +79,7 @@ class Prefs(context: Context) : MuteMemory {
     }
 
     fun resetStats() {
-        val edit = sp.edit().remove(KEY_SKIPPED).remove(KEY_LAST_SKIP)
+        val edit = sp.edit().remove(KEY_SKIPPED).remove(KEY_LAST_SKIP).remove(KEY_KEPT_PLAYING)
         WatchedApp.entries.forEach { edit.remove(skippedKey(it)) }
         edit.apply()
     }
@@ -88,6 +104,8 @@ class Prefs(context: Context) : MuteMemory {
         const val KEY_SKIPPED = "skipped_count"
         const val KEY_LAST_SKIP = "last_skip_at"
         const val KEY_MUTED_BY_US = "muted_by_us"
+        const val KEY_KEEP_PLAYING = "keep_playing"
+        const val KEY_KEPT_PLAYING = "kept_playing_count"
         const val MAX_DELAY_SECONDS = 10
 
         private const val APP_ENABLED_PREFIX = "app_enabled_"
@@ -98,6 +116,7 @@ class Prefs(context: Context) : MuteMemory {
 
         fun isAppEnabledKey(key: String?) = key != null && key.startsWith(APP_ENABLED_PREFIX)
         fun isStatsKey(key: String?) =
-            key == KEY_SKIPPED || key == KEY_LAST_SKIP || (key != null && key.startsWith(SKIPPED_PREFIX))
+            key == KEY_SKIPPED || key == KEY_LAST_SKIP || key == KEY_KEPT_PLAYING ||
+                (key != null && key.startsWith(SKIPPED_PREFIX))
     }
 }

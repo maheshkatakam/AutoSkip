@@ -32,6 +32,8 @@ data class UiNode(
     val enabled: Boolean,
     val visible: Boolean,
     val bounds: Box,
+    /** A list or sheet that can scroll right now, such as the home feed. */
+    val scrollable: Boolean = false,
     var subtreeEnd: Int = index,
 )
 

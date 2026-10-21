@@ -4,8 +4,9 @@ An Android app that presses the **Skip** button in the official **YouTube** and 
 
 - Presses **Skip** the moment it becomes pressable, or after a delay you choose (0 to 10 seconds).
 - Optionally **mutes** ads while they play, including ads that have no Skip button (such as audio ads in YouTube Music), and unmutes the moment Skip is pressed or the ad ends.
+- Optionally **keeps playing** when YouTube or YouTube Music pauses and asks "Video paused. Continue watching?": it presses **Yes** for you.
 - Works in YouTube, YouTube Music or both: each has its own switch.
-- Counts how many ads it has skipped, per app.
+- Counts how many ads it has skipped, per app, and how many times it kept playback going.
 - Reads only those two apps, stores nothing it sees, and has **no internet permission**.
 - **Free**, with no ads and no tracking. Open source under the [MIT licence](LICENSE).
 
@@ -91,6 +92,7 @@ You're done. The other settings are optional:
 
 - **Press Skip as soon as it appears:** drag the slider under it if you'd rather see a few seconds of each ad first.
 - **Mute ads while they play:** also silences ads that have no Skip button, such as YouTube Music's audio ads. YouTube shows captions while your phone is muted; if you'd rather it didn't, turn off **Show when muted** in YouTube's caption settings.
+- **Keep playing when asked "Continue watching?":** after a while without a tap (about 30 minutes on phones), YouTube and YouTube Music pause and ask whether you're still there. With this on, AutoSkip presses **Yes** so playback carries on. It's off by default, and works even with **Skip ads automatically** off.
 - **Debug logging:** only needed when [fixing AutoSkip after a YouTube update](#when-youtube-changes-its-ui).
 
 ### Updating to a new version
@@ -133,6 +135,7 @@ Use this if your phone blocks the download (Play Protect, Auto Blocker or "unver
 | AutoSkip isn't in the Accessibility list | Check it's installed (**Settings → Apps**), then look under **Downloaded apps** or **Installed apps** rather than the main list. |
 | Status says **Turned on, but not running** | Android stopped it. Turn it off and on again in Accessibility settings, then do [Step 6](#step-6-let-it-run-in-the-background). Accessibility settings can still show it as on while it isn't running. |
 | Status says **On**, but ads aren't skipped | Check that **Skip ads automatically** and the app you're using (under **Use in**) are switched on, and that AutoSkip and YouTube are both up to date. If they are, YouTube may have changed its buttons: see [When YouTube changes its UI](#when-youtube-changes-its-ui), or open an issue on this repository. |
+| Playback still stops at "Continue watching?" | Check that **Keep playing when asked** and the app (under **Use in**) are switched on. The app has to be on screen: with the screen off, AutoSkip presses Yes when you turn the screen back on. If it still doesn't, YouTube may have reworded the prompt: see [When YouTube changes its UI](#when-youtube-changes-its-ui). |
 | Captions turn on during ads | That's YouTube's **Show when muted** setting reacting to **Mute ads while they play**. Turn off one or the other. |
 
 ### Check a download is genuine (optional)
@@ -172,11 +175,20 @@ All the matching rules are in [`SkipDetector.kt`](app/src/main/java/io/github/au
 - A "Sponsored" label on its own is ignored, because promoted cards in the home feed, and YouTube Music's Now Playing banner, use it with no ad playing.
 - If the app ignores the press, it falls back to a tap at the button, but never if anything is drawn over the button (YouTube sometimes slides an install card over Skip).
 
+**Keep playing when asked.** With that setting on, the same scans look for the prompt that pauses playback. The rules are in [`KeepPlayingDetector.kt`](app/src/main/java/io/github/autoskip/KeepPlayingDetector.kt), also covered by unit tests. AutoSkip presses a "Yes"-type button ("Yes", "Continue", "OK"...) only when it sits in the same small dialog as wording that can only be this prompt: "Video paused. Continue watching?", "Are you still watching?" or "Are you still listening?", or a "Video paused" or "Music paused" title above "Continue watching?". On their own, "Continue watching?" or "Still there?" only count next to a plain "Yes". So:
+
+- A "Yes" in any other dialog ("Remove from Watch later?", "Delete playlist?") is never pressed.
+- Nothing inside a scrolling list counts, so it never votes "Yes" in a community-post poll that asks "Are you still watching?".
+- The **Continue watching** shelf on the home tab and the miniplayer's resume bar use the prompt's words but are never pressed.
+- YouTube's own **Remind me to take a break** reminder, which you set up yourself, is left alone.
+- It never presses "No", "Cancel", "Not now", or a button containing an advertiser link.
+
 ## Limitations
 
 - **Skippable ads only.** It presses the button the app shows you; it can't shorten ads that have none. Muting is the most an outside app can do about those. Many YouTube Music ads are unskippable audio ads.
 - **The official apps only:** YouTube (`com.google.android.youtube`) and YouTube Music (`com.google.android.apps.youtube.music`). Not YouTube in a browser or on TV.
-- **The app has to be on screen.** If YouTube Music plays an ad while it's in the background or the screen is off, there's no Skip button on screen to press, and nothing to detect for muting.
+- **The app has to be on screen.** If YouTube Music plays an ad while it's in the background or the screen is off, there's no Skip button on screen to press, and nothing to detect for muting. The same goes for the "Continue watching?" prompt: if it appears while the screen is off, AutoSkip presses Yes as soon as the screen is on and the app is in front.
+- **English wording.** The "Continue watching?" prompt is recognised by its English wording only, and so are Skip labels that have no view ID. If your phone is in another language, see [When YouTube changes its UI](#when-youtube-changes-its-ui).
 - **YouTube Music is less tested.** It shares YouTube's player, so the same rules should apply, but its ad wording is less documented. If an ad isn't skipped or muted there, turn on Debug logging and follow [When YouTube changes its UI](#when-youtube-changes-its-ui).
 - **Advanced Protection Mode (Android 17).** When that security mode is on, Android disables accessibility services that aren't declared assistive tools, which includes AutoSkip.
 - **Needs maintenance** after some app updates (see [When YouTube changes its UI](#when-youtube-changes-its-ui)).
@@ -188,7 +200,7 @@ An accessibility service is powerful: it can read the screen. So AutoSkip makes 
 
 - **No permissions at all, and never INTERNET.** Without the internet permission Android won't let the app open a network connection, so nothing it reads can leave the phone. [`verify-apk.sh`](.github/scripts/verify-apk.sh) inspects every APK the workflows build and fails the build if it requests *any* permission. A release can't be published without passing it.
 - **YouTube and YouTube Music only.** It receives events from those two apps only, and re-checks the app of every window before reading it.
-- **Keeps nothing.** It stores only its own settings and the skip counter.
+- **Keeps nothing.** It stores only its own settings and its two counters.
 - **Free, with no ads, accounts, analytics or tracking.**
 
 If you fork this, keep it that way, and don't install builds of apps like this from people you don't trust. Check the [signing fingerprint](#check-a-download-is-genuine-optional).
@@ -237,7 +249,8 @@ Every push runs three kinds of test on GitHub, and a red ❌ on a commit means o
 - **Detection rules** ([`SkipDetectorTest`](app/src/test/java/io/github/autoskip/SkipDetectorTest.kt)): fake screens, checking which button would be pressed, including every trap below.
 - **Pressing and counting** ([`PressTrackerTest`](app/src/test/java/io/github/autoskip/PressTrackerTest.kt)): scan-by-scan timelines checking when Skip is pressed and that each skipped ad is counted exactly once, including a button that disappears 0.3 s after the press (the case version 1.0 got wrong, leaving the count at 0), flickers, retries and back-to-back ads.
 - **Muting** ([`AdMuterTest`](app/src/test/java/io/github/autoskip/AdMuterTest.kt)): when the phone is muted and unmuted, including that Skip unmutes at once, a run of ads stays muted, a volume key wins, and a phone you muted yourself is never unmuted.
-- **The real app on an emulator** ([`e2e.sh`](.github/scripts/e2e.sh)), on Android 11 and Android 16. Two small fake apps ([`fakeapps/`](fakeapps)) install under YouTube's and YouTube Music's package names and play fake ads: YouTube-style with view IDs and a countdown inside the button, YouTube Music-style with no IDs and "Your music will resume after this ad". Each app plays 3 skippable ads plus one unskippable ad, twice: once with **Mute ads while they play** off and once with it on. The test checks that every Skip was pressed, never during its countdown, that none of the traps was pressed ("Visit advertiser", "Skip ads with Premium", and a plain "Skip" button next to a song called "Skip Ads (Remix)" with no ad playing), that AutoSkip's saved counts, total and YouTube Music, match the skips that happened, and, with muting on, that every ad played muted and the sound was back within 0.3 s of each Skip and 0.7 s after the unskippable ad (so YouTube wouldn't start the video with captions). The results appear as notes on the workflow run.
+- **Keep playing when asked** ([`KeepPlayingDetectorTest`](app/src/test/java/io/github/autoskip/KeepPlayingDetectorTest.kt)): fake prompts and dialogs, checking that the prompt's "Yes" is pressed in each wording and layout, and that none of the traps above is: other Yes/No dialogs, a poll in the feed, the "Continue watching" shelf, the take-a-break reminder, a disabled or hidden button.
+- **The real app on an emulator** ([`e2e.sh`](.github/scripts/e2e.sh)), on Android 11 and Android 16. Two small fake apps ([`fakeapps/`](fakeapps)) install under YouTube's and YouTube Music's package names and play fake ads: YouTube-style with view IDs and a countdown inside the button, YouTube Music-style with no IDs and "Your music will resume after this ad". Each app plays 3 skippable ads plus one unskippable ad, twice: once with **Mute ads while they play** off and once with it on. The test checks that every Skip was pressed, never during its countdown, that none of the traps was pressed ("Visit advertiser", "Skip ads with Premium", and a plain "Skip" button next to a song called "Skip Ads (Remix)" with no ad playing), that AutoSkip's saved counts, total and YouTube Music, match the skips that happened, and, with muting on, that every ad played muted and the sound was back within 0.3 s of each Skip and 0.7 s after the unskippable ad (so YouTube wouldn't start the video with captions). Every round then ends with the pause prompt, YouTube-style ("Video paused. Continue watching?") or YouTube Music-style ("Music paused" over "Continue listening?"), shown after an unrelated "Remove from Watch later?" dialog and next to a poll and a "Continue watching" shelf. With **Keep playing when asked** on, the prompt's "Yes" must be pressed and counted exactly once; with it off, nothing may be pressed. A last round turns **Skip ads automatically** off to check the prompt is still answered and Skip never pressed. The results appear as notes on the workflow run.
 
 To run the unit tests yourself: `./gradlew :app:testDebugUnitTest`.
 
@@ -254,7 +267,9 @@ YouTube and YouTube Music rename buttons and view IDs between app versions, so e
    Search `ui.xml` for `skip` and look at the `resource-id`, `text` and `content-desc` of the button.
 4. Add what you find to the lists at the top of `SkipDetector.kt`, add a test for it in `SkipDetectorTest.kt`, and run `./gradlew :app:testDebugUnitTest`.
 
-**Other languages.** View IDs work in any language. Labels are English only out of the box, so if your phone is set to Hindi, Spanish and so on, and the ID is missing on your device, add your language's wording for "Skip ad" and "Ad" to the lists.
+**The "Continue watching?" prompt.** With Debug logging on, if the prompt's wording is on screen but AutoSkip doesn't recognise a button next to it, it prints every labelled element once. Snapshot it the same way while the prompt is showing (search `ui.xml` for `paused` or `still`), then add the wording or button label to the lists at the top of `KeepPlayingDetector.kt`, with a test in `KeepPlayingDetectorTest.kt`.
+
+**Other languages.** View IDs work in any language. Labels are English only out of the box, so if your phone is set to Hindi, Spanish and so on, and the ID is missing on your device, add your language's wording for "Skip ad" and "Ad" to the lists. The same goes for the "Continue watching?" prompt and its "Yes".
 
 ---
 

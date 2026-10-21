@@ -5,7 +5,7 @@
 
     <!-- Shown in Settings > Accessibility -->
     <string name="service_label">AutoSkip</string>
-    <string name="service_description">Presses the Skip button in the YouTube and YouTube Music apps for you once it appears, and can mute ads while they play. It only looks at those two apps, never reads other apps, keeps nothing it sees, and has no internet access.</string>
+    <string name="service_description">Presses the Skip button in the YouTube and YouTube Music apps for you once it appears, can mute ads while they play, and, if you turn it on, answers \"Yes\" when they pause and ask \"Continue watching?\". It only looks at those two apps, never reads other apps, keeps nothing it sees, and has no internet access.</string>
 
     <!-- The apps AutoSkip works in -->
     <string name="app_youtube">YouTube</string>
@@ -20,7 +20,7 @@
     <string name="status_off_detail">Turn on AutoSkip in Accessibility settings. Android doesn\'t let apps do this for themselves.</string>
     <string name="status_stuck">Turned on, but not running</string>
     <string name="status_stuck_detail">Android has stopped the service. In Accessibility settings, turn AutoSkip off and on again, then check that battery saving isn\'t closing this app.</string>
-    <string name="disclosure">What it accesses: AutoSkip uses Android\'s Accessibility API to read the screens of the YouTube and YouTube Music apps, so it can find the Skip button and press it. It reads nothing from other apps, stores nothing it sees, and cannot send data anywhere because it has no internet permission.</string>
+    <string name="disclosure">What it accesses: AutoSkip uses Android\'s Accessibility API to read the screens of the YouTube and YouTube Music apps, so it can find the Skip button and press it, and, if you turn it on, the \"Yes\" on YouTube\'s \"Continue watching?\" prompt. It reads nothing from other apps, stores nothing it sees, and cannot send data anywhere because it has no internet permission.</string>
     <string name="button_open_settings">Open Accessibility settings</string>
     <string name="button_manage">Accessibility settings</string>
     <string name="apps_missing">Neither YouTube nor YouTube Music is installed on this phone. AutoSkip only works with the official apps.</string>
@@ -43,6 +43,8 @@
     <string name="delay_description">Seconds to wait before pressing Skip</string>
     <string name="setting_mute">Mute ads while they play</string>
     <string name="setting_mute_detail">Also silences ads that have no Skip button, such as audio ads in YouTube Music. Sound comes back the moment Skip is pressed or the ad ends, or press a volume key. YouTube shows captions while your phone is muted; to stop that, turn off \"Show when muted\" in YouTube\'s caption settings.</string>
+    <string name="setting_keep_playing">Keep playing when asked \"Continue watching?\"</string>
+    <string name="setting_keep_playing_detail">After a while without a tap, YouTube and YouTube Music pause and ask \"Video paused. Continue watching?\". With this on, AutoSkip presses Yes for you, so playback carries on. It works while the app is on screen. Off by default: YouTube asks so that nothing keeps playing, and using data, when nobody is there.</string>
     <string name="setting_verbose">Debug logging</string>
     <string name="setting_verbose_detail">Writes what AutoSkip sees to logcat (tag AutoSkip). Use it to fix AutoSkip after a YouTube or YouTube Music update.</string>
 
@@ -54,7 +56,11 @@
         <item quantity="other">%1$d ads skipped. Last one %2$s.</item>
     </plurals>
     <string name="stats_breakdown">YouTube: %1$d · YouTube Music: %2$d</string>
-    <string name="button_reset_stats">Reset count</string>
+    <plurals name="stats_kept_playing">
+        <item quantity="one">Answered \"Continue watching?\" %1$d time.</item>
+        <item quantity="other">Answered \"Continue watching?\" %1$d times.</item>
+    </plurals>
+    <string name="button_reset_stats">Reset counts</string>
 
     <string name="footer">Not affiliated with YouTube or Google. Skippable ads only: AutoSkip presses the button the app already shows you. Ads without a Skip button still play (you can mute them).</string>
     <string name="version">Version %1$s</string>

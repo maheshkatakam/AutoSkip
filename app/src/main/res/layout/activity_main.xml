@@ -188,6 +188,22 @@
             android:textColor="@color/text_secondary" />
 
         <Switch
+            android:id="@+id/switch_keep_playing"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:minHeight="48dp"
+            android:text="@string/setting_keep_playing"
+            android:textAppearance="@android:style/TextAppearance.Material.Body1" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/setting_keep_playing_detail"
+            android:textAppearance="@android:style/TextAppearance.Material.Caption"
+            android:textColor="@color/text_secondary" />
+
+        <Switch
             android:id="@+id/switch_verbose"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -222,6 +238,15 @@
 
         <TextView
             android:id="@+id/stats_breakdown"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:textAppearance="@android:style/TextAppearance.Material.Body1"
+            android:textColor="@color/text_secondary"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/stats_kept_playing"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"

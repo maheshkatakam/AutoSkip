@@ -34,6 +34,7 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
     private lateinit var appsMissing: View
     private lateinit var stats: TextView
     private lateinit var statsBreakdown: TextView
+    private lateinit var statsKeptPlaying: TextView
     private lateinit var delayLabel: TextView
     private lateinit var appSwitches: Map<WatchedApp, Switch>
 
@@ -53,6 +54,7 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
         appsMissing = findViewById(R.id.apps_missing)
         stats = findViewById(R.id.stats)
         statsBreakdown = findViewById(R.id.stats_breakdown)
+        statsKeptPlaying = findViewById(R.id.stats_kept_playing)
         delayLabel = findViewById(R.id.delay_label)
 
         openSettings.setOnClickListener { openAccessibilitySettings() }
@@ -71,6 +73,7 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
 
         findViewById<TextView>(R.id.version).text = getString(R.string.version, versionName())
         bindSwitch(R.id.switch_mute, prefs.muteAds) { prefs.muteAds = it }
+        bindSwitch(R.id.switch_keep_playing, prefs.keepPlaying) { prefs.keepPlaying = it }
         bindSwitch(R.id.switch_verbose, prefs.verboseLogging) { prefs.verboseLogging = it }
 
         val delay = findViewById<SeekBar>(R.id.delay_seekbar)
@@ -93,17 +96,26 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         applyTestSettings(intent)
+        findViewById<Switch>(R.id.switch_enabled).isChecked = prefs.skipEnabled
         findViewById<Switch>(R.id.switch_mute).isChecked = prefs.muteAds
+        findViewById<Switch>(R.id.switch_keep_playing).isChecked = prefs.keepPlaying
     }
 
     /**
-     * Debug builds only: lets the emulator test (.github/scripts/e2e.sh) switch muting on and
-     * off with `am start ... --ez test_mute_ads true`. Release builds ignore it.
+     * Debug builds only: lets the emulator test (.github/scripts/e2e.sh) switch settings with
+     * `am start ... --ez test_mute_ads true` (also test_keep_playing, test_skip_enabled).
+     * Release builds ignore these.
      */
     private fun applyTestSettings(intent: Intent?) {
         val debuggable = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
-        if (!debuggable || intent == null || !intent.hasExtra(EXTRA_TEST_MUTE_ADS)) return
-        prefs.muteAds = intent.getBooleanExtra(EXTRA_TEST_MUTE_ADS, false)
+        if (!debuggable || intent == null) return
+        if (intent.hasExtra(EXTRA_TEST_MUTE_ADS)) prefs.muteAds = intent.getBooleanExtra(EXTRA_TEST_MUTE_ADS, false)
+        if (intent.hasExtra(EXTRA_TEST_KEEP_PLAYING)) {
+            prefs.keepPlaying = intent.getBooleanExtra(EXTRA_TEST_KEEP_PLAYING, false)
+        }
+        if (intent.hasExtra(EXTRA_TEST_SKIP_ENABLED)) {
+            prefs.skipEnabled = intent.getBooleanExtra(EXTRA_TEST_SKIP_ENABLED, true)
+        }
     }
 
     override fun onResume() {
@@ -165,6 +177,10 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
             )
             statsBreakdown.visibility = View.VISIBLE
         }
+
+        val kept = prefs.keptPlayingCount
+        statsKeptPlaying.visibility = if (kept > 0) View.VISIBLE else View.GONE
+        if (kept > 0) statsKeptPlaying.text = resources.getQuantityString(R.plurals.stats_kept_playing, kept, kept)
     }
 
     /** "Watching YouTube and YouTube Music." or just the one that's switched on. */
@@ -282,5 +298,7 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
 
     companion object {
         private const val EXTRA_TEST_MUTE_ADS = "test_mute_ads"
+        private const val EXTRA_TEST_KEEP_PLAYING = "test_keep_playing"
+        private const val EXTRA_TEST_SKIP_ENABLED = "test_skip_enabled"
     }
 }
